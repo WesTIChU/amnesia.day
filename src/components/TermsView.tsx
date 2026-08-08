@@ -47,9 +47,9 @@ export const TermsView: React.FC<TermsViewProps> = ({
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-white text-xs tracking-wider uppercase font-semibold">3. Time-Lock Enforcement</h2>
+            <h2 className="text-white text-xs tracking-wider uppercase font-semibold">3. One-Year Release</h2>
             <p>
-              Memories committed to Amnesia are cryptographically time-locked for 365 calendar days. Content cannot be unlocked or previewed prior to the scheduled awakening date.
+              Memories committed to Amnesia are encrypted in your browser and held by the server until 365 calendar days have passed. The server withholds the material needed to decrypt a memory until its scheduled release date, and Amnesia will not show a memory through its own interface before then. This release is enforced by the Amnesia server, not by cryptography alone: it does not prevent anyone who knows your Recovery Phrase, or who kept the words on their own device before sealing, from reading a memory at any time.
             </p>
           </section>
 

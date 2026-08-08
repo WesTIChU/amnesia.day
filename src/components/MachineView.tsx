@@ -149,7 +149,7 @@ export const MachineView: React.FC<MachineViewProps> = ({
             <div className="space-y-1 bg-[#080808] p-4 border border-[#1f1f1f]">
               <span className="text-[#737373] text-[10px] uppercase tracking-wider block">Memories Sleeping</span>
               <span className="text-white text-lg font-light">{metrics.sleepingMemories?.toLocaleString() ?? 'Unavailable'}</span>
-              <span className="text-[10px] text-[#737373] block pt-1">Time-locked</span>
+              <span className="text-[10px] text-[#737373] block pt-1">Awaiting server release</span>
             </div>
 
             <div className="space-y-1 bg-[#080808] p-4 border border-[#1f1f1f]">

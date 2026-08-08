@@ -85,7 +85,7 @@ export default function App() {
       },
       '/about': {
         title: 'About Amnesia | A One-Year Memory Archive',
-        description: 'Learn how Amnesia protects private memories with browser encryption, a one-year time lock, and no personal data collection.',
+        description: 'Learn how Amnesia protects private memories with browser encryption, a server-enforced one-year release, and no personal data collection.',
       },
       '/faq': {
         title: 'Archive Questions | Amnesia',
@@ -97,7 +97,7 @@ export default function App() {
       },
       '/terms': {
         title: 'Terms of Service | Amnesia',
-        description: 'Read the Amnesia Vault Protocol terms for one-year time-locked memories and Recovery Phrase access.',
+        description: 'Read the Amnesia Vault Protocol terms for browser-encrypted, one-year-release memories and Recovery Phrase access.',
       },
     };
     const page = metadata[path] || metadata['/'];

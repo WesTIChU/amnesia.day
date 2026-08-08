@@ -39,9 +39,9 @@ export const PrivacyView: React.FC<PrivacyViewProps> = ({
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-white text-xs tracking-wider uppercase font-semibold">2. Content Encryption</h2>
+            <h2 className="text-white text-xs tracking-wider uppercase font-semibold">2. Content Encryption & Release</h2>
             <p>
-              Your submitted notes and memories are stored in an encrypted database vault. Messages remain sealed in time-locked containers until 365 days have passed from the time of submission.
+              Your submitted notes and memories are encrypted in your browser with AES-256-GCM before they reach the server, so Amnesia stores only ciphertext and never receives or stores plaintext. Your Recovery Phrase is never stored by Amnesia, and the server cannot read a memory without it. Memories are held by the server until 365 calendar days have passed; the server then releases the material needed to decrypt them. This release is enforced by the Amnesia server and controls the normal archive interface — it is not a cryptographic guarantee that the words were never known to anyone.
             </p>
           </section>
 

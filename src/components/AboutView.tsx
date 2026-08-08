@@ -46,7 +46,7 @@ export const AboutView: React.FC<AboutViewProps> = ({
               "Most internet apps demand your immediate attention. Amnesia asks for your patience."
             </p>
             <p>
-              Amnesia is a quiet digital vault designed for personal notes, reflections, letters, and thoughts meant to be read in exactly one year. Once a memory is sealed, it cannot be peeked at or edited until 365 days have elapsed.
+              Amnesia is a quiet digital vault designed for personal notes, reflections, letters, and thoughts meant to be read in exactly one year. Once a memory is sealed it is encrypted in your browser and cannot be read again through the archive until 365 days have elapsed.
             </p>
           </section>
 
@@ -54,12 +54,12 @@ export const AboutView: React.FC<AboutViewProps> = ({
             <h2 className="font-mono text-white text-xs tracking-[0.2em] uppercase font-semibold"><span className="text-[#4A5D4E] mr-3">02</span>How It Works</h2>
             <ul className="space-y-4 text-[#a3a3a3]">
               <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Recovery Phrase:</strong> Access is controlled by a unique Recovery Phrase. No email, username, or password required.</li>
-              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Time Locking:</strong> Every submitted entry is timestamped and cryptographically locked for 365 days.</li>
-              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Browser Encryption:</strong> Memories are encrypted in your browser before they reach Amnesia. I cannot read them from the server or database. Your Recovery Phrase is required to decrypt them.</li>
-              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Quiet Awakening:</strong> On midnight of its anniversary, the memory unlocks quietly for you to read.</li>
+              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Browser Encryption:</strong> Memories are encrypted in your browser before they reach Amnesia. The server stores only ciphertext and never sees the plaintext. Your Recovery Phrase is required to decrypt them.</li>
+              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">One-Year Release:</strong> Every submitted entry is timestamped and held by the server until 365 days have passed. The server withholds the material needed to decrypt a memory until its release date.</li>
+              <li className="pl-4 border-l border-[#4A5D4E]/50"><strong className="text-white font-normal">Quiet Awakening:</strong> On midnight of its anniversary, the server releases the memory so it can be read.</li>
             </ul>
             <p className="font-serif text-sm text-[#737373] leading-relaxed">
-              Browser encryption protects memories from the Amnesia server and its database. The one-year lock controls normal Amnesia retrieval; it cannot prevent someone from saving words on their own device before sealing. Because Amnesia delivers the browser code, this is not a claim of Signal-style end-to-end encryption against a malicious server.
+              The one-year wait is enforced by the Amnesia server, not by cryptography alone: Amnesia will not reveal a memory through its own interface before the release date. Because Amnesia delivers the browser code, this is not a claim of Signal-style end-to-end encryption against a malicious server. Anyone who knows your Recovery Phrase, or who kept the words on their own device before sealing, could read a memory at any time.
             </p>
           </section>
 

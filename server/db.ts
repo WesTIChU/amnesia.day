@@ -15,12 +15,13 @@ import {
 } from './encryption.js';
 
 // Ensure data directory exists outside public folder
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.AMNESIA_DATA_DIR || path.join(process.cwd(), 'data');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const DB_PATH = path.join(DATA_DIR, 'amnesia.db');
+// Allow tests and deployments to isolate the database file.
+const DB_PATH = process.env.AMNESIA_DB_PATH || path.join(DATA_DIR, 'amnesia.db');
 
 export const db = new DatabaseSync(DB_PATH);
 
@@ -83,6 +84,56 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_memories_unlock_at ON memories(unlock_at);
   CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories(created_at);
 `);
+
+// Retired-key migration: keep existing retired records, add a non-reversible
+// V2 lookup identifier so a retired Recovery Phrase cannot be re-registered.
+try {
+  const retiredCols = db.prepare('PRAGMA table_info(retired_keys)').all() as Array<{ name: string }>;
+  if (!retiredCols.some((c) => c.name === 'auth_lookup_hash')) {
+    db.exec('ALTER TABLE retired_keys ADD COLUMN auth_lookup_hash TEXT;');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_retired_keys_auth_lookup ON retired_keys(auth_lookup_hash);');
+} catch (e) {
+  console.error('Schema check on retired_keys table:', e);
+}
+
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
+
+// Approximate the client's 2,000-character plaintext limit: AES-256-GCM adds
+// a 16-byte tag, and a 2,000-char CJK message can encode to roughly 6,000
+// UTF-8 bytes (~8,000 base64url chars). 8,192 bytes covers that with margin.
+export const MAX_V2_CIPHERTEXT_BYTES = 8192;
+
+export function decodeBase64UrlOrNull(value: unknown): Buffer | null {
+  if (typeof value !== 'string' || !BASE64URL_RE.test(value)) return null;
+  try {
+    return Buffer.from(value, 'base64url');
+  } catch {
+    return null;
+  }
+}
+
+// Reject malformed or oversized V2 encrypted payloads before anything is
+// written to the database.
+export function validateV2EncryptedMemory(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return 'Invalid encrypted memory payload.';
+  const p = payload as Record<string, unknown>;
+  const ciphertextBytes = decodeBase64UrlOrNull(p.ciphertext);
+  const nonceBytes = decodeBase64UrlOrNull(p.nonce);
+  const authTagBytes = decodeBase64UrlOrNull(p.authTag);
+  const clientSaltBytes = decodeBase64UrlOrNull(p.clientSalt);
+  const memoryId = p.memoryId;
+
+  if (!ciphertextBytes || ciphertextBytes.length < 1 || ciphertextBytes.length > MAX_V2_CIPHERTEXT_BYTES) {
+    return 'Invalid or oversized encrypted memory payload.';
+  }
+  if (!nonceBytes || nonceBytes.length !== 12) return 'Invalid encrypted memory payload.';
+  if (!authTagBytes || authTagBytes.length !== 16) return 'Invalid encrypted memory payload.';
+  if (!clientSaltBytes || clientSaltBytes.length !== 16) return 'Invalid encrypted memory payload.';
+  if (typeof memoryId !== 'string' || !UUID_V4_RE.test(memoryId)) return 'Invalid encrypted memory payload.';
+  return null;
+}
 
 // Run migration check for memories table columns
 try {
@@ -275,11 +326,17 @@ export function createArchive(): { key: string; createdAt: string } {
   return { key, createdAt: now };
 }
 
-export function createArchiveV2(lookupVerifier: string, authVerifier: string, authSalt: string): { archiveId: number; createdAt: string; encryptionSalt: string } {
+export function createArchiveV2(lookupVerifier: string, authVerifier: string, authSalt: string): { archiveId: number; createdAt: string; encryptionSalt: string } | null {
   const now = new Date().toISOString();
   const encryptionSalt = crypto.randomBytes(16).toString('base64url');
   const authVerifierHash = `$v2$${archiveAuthLookup(authVerifier)}`;
   const authLookupHash = `$v2$${archiveAuthLookup(lookupVerifier)}`;
+
+  // Reject retired Recovery Phrases: the raw phrase is never stored, only a
+  // non-reversible HMAC lookup identifier recorded at deletion time.
+  const retired = db.prepare('SELECT 1 FROM retired_keys WHERE key_hash = ? OR auth_lookup_hash = ? LIMIT 1').get(authVerifierHash, authLookupHash);
+  if (retired) return null;
+
   const result = db.prepare(`
     INSERT INTO archives (key_hash, auth_lookup_hash, created_at, last_active_at, archive_version, auth_salt, encryption_salt)
     VALUES (?, ?, ?, ?, 2, ?, ?)
@@ -359,11 +416,9 @@ export function addEncryptedMemoryForSession(archiveId: number, payload: {
 }): { success: boolean; message: string; memoryId?: number; unlockAt?: string } {
   const archive = getArchiveByIdForSession(archiveId);
   if (!archive || archive.archiveVersion !== 2) return { success: false, message: 'V2 archive required.' };
-  if (Object.entries(payload).some(([name, value]) => typeof value !== 'string' || (name === 'memoryId'
-    ? !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-    : !/^[A-Za-z0-9_-]+$/.test(value)))) {
-    return { success: false, message: 'Invalid encrypted memory payload.' };
-  }
+
+  const invalid = validateV2EncryptedMemory(payload);
+  if (invalid) return { success: false, message: invalid };
 
   const todayPrefix = new Date().toISOString().slice(0, 10);
   if (db.prepare('SELECT id FROM memories WHERE archive_id = ? AND created_at LIKE ?').get(archiveId, `${todayPrefix}%`)) {
@@ -620,23 +675,39 @@ function getMemoriesForArchiveId(archiveId: number): ArchiveDataResponse | null 
 }
 
 // Mark Memory Read
-export function markMemoryRead(rawKey: string, memoryId: number): { success: boolean; firstReadAt: string; readCount: number } | null {
+export type MarkMemoryReadResult =
+  | { success: true; firstReadAt: string; readCount: number }
+  | { success: false; error: string };
+
+export function markMemoryRead(rawKey: string, memoryId: number): MarkMemoryReadResult | null {
   const archive = getArchiveByKey(rawKey);
   if (!archive) return null;
 
   return markMemoryReadForArchive(archive.id, memoryId);
 }
 
-export function markMemoryReadForSession(archiveId: number, memoryId: number): ReturnType<typeof markMemoryRead> {
+export function markMemoryReadForSession(archiveId: number, memoryId: number): MarkMemoryReadResult | null {
   return markMemoryReadForArchive(archiveId, memoryId);
 }
 
-function markMemoryReadForArchive(archiveId: number, memoryId: number): { success: boolean; firstReadAt: string; readCount: number } | null {
+function markMemoryReadForArchive(archiveId: number, memoryId: number): MarkMemoryReadResult | null {
   if (!Number.isSafeInteger(memoryId) || memoryId <= 0) return null;
 
-  const memoryRow = db.prepare('SELECT id, first_read_at as firstReadAt, read_count as readCount FROM memories WHERE id = ? AND archive_id = ?').get(memoryId, archiveId) as { id: number; firstReadAt: string | null; readCount: number | null } | undefined;
+  const memoryRow = db.prepare(`
+    SELECT id, unlocked, unlock_at as unlockAt, first_read_at as firstReadAt, read_count as readCount
+    FROM memories WHERE id = ? AND archive_id = ?
+  `).get(memoryId, archiveId) as { id: number; unlocked: number; unlockAt: string; firstReadAt: string | null; readCount: number | null } | undefined;
 
   if (!memoryRow) return null;
+
+  // A memory may only be marked as read once it has been released by the
+  // Timekeeper (unlocked = 1) and its unlock time has actually arrived.
+  if (!memoryRow.unlocked) {
+    return { success: false, error: 'This memory is still sealed and cannot be read yet.' };
+  }
+  if (new Date(memoryRow.unlockAt).getTime() > Date.now()) {
+    return { success: false, error: 'This memory has not reached its release time yet.' };
+  }
 
   const nowIso = new Date().toISOString();
   const firstReadAt = memoryRow.firstReadAt || nowIso;
@@ -662,6 +733,8 @@ export function deleteArchive(rawKey: string): boolean {
   const archive = getArchiveByKey(rawKey);
   if (!archive) return false;
 
+  const row = db.prepare('SELECT auth_lookup_hash as authLookupHash FROM archives WHERE id = ?').get(archive.id) as { authLookupHash: string | null } | undefined;
+
   db.exec('BEGIN TRANSACTION;');
   try {
     // Delete memories
@@ -672,9 +745,10 @@ export function deleteArchive(rawKey: string): boolean {
     const deleteArchiveStmt = db.prepare('DELETE FROM archives WHERE id = ?');
     deleteArchiveStmt.run(archive.id);
 
-    // Retire key permanently
-    const retireStmt = db.prepare('INSERT OR REPLACE INTO retired_keys (key_hash, retired_at) VALUES (?, ?)');
-    retireStmt.run(keyHash, new Date().toISOString());
+    // Retire key permanently. Only non-reversible hashes are stored; the raw
+    // Recovery Phrase is never written or logged.
+    const retireStmt = db.prepare('INSERT OR REPLACE INTO retired_keys (key_hash, retired_at, auth_lookup_hash) VALUES (?, ?, ?)');
+    retireStmt.run(keyHash, new Date().toISOString(), row?.authLookupHash || null);
 
     db.exec('COMMIT;');
     return true;
@@ -685,7 +759,7 @@ export function deleteArchive(rawKey: string): boolean {
 }
 
 export function deleteArchiveById(archiveId: number): boolean {
-  const archive = db.prepare('SELECT id, key_hash as keyHash FROM archives WHERE id = ?').get(archiveId) as { id: number; keyHash: string } | undefined;
+  const archive = db.prepare('SELECT id, key_hash as keyHash, auth_lookup_hash as authLookupHash FROM archives WHERE id = ?').get(archiveId) as { id: number; keyHash: string; authLookupHash: string | null } | undefined;
   if (!archive) return false;
 
   db.exec('BEGIN TRANSACTION;');
@@ -693,7 +767,7 @@ export function deleteArchiveById(archiveId: number): boolean {
     db.prepare('DELETE FROM sessions WHERE archive_id = ?').run(archiveId);
     db.prepare('DELETE FROM memories WHERE archive_id = ?').run(archiveId);
     db.prepare('DELETE FROM archives WHERE id = ?').run(archiveId);
-    db.prepare('INSERT OR REPLACE INTO retired_keys (key_hash, retired_at) VALUES (?, ?)').run(archive.keyHash, new Date().toISOString());
+    db.prepare('INSERT OR REPLACE INTO retired_keys (key_hash, retired_at, auth_lookup_hash) VALUES (?, ?, ?)').run(archive.keyHash, new Date().toISOString(), archive.authLookupHash);
     db.exec('COMMIT;');
     return true;
   } catch (err) {

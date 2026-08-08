@@ -69,7 +69,10 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   const [showReunion, setShowReunion] = useState(true);
 
   // Draft & Memory creation state
-  const draftStorageKey = 'amnesia_draft';
+  // Drafts live only in sessionStorage (cleared when the tab closes) and are
+  // namespaced by archive ID so opening another archive never reveals a
+  // different archive's draft.
+  const draftStorageKey = (archiveId?: number) => (archiveId ? `amnesia_draft_${archiveId}` : 'amnesia_draft');
   const [memoryText, setMemoryText] = useState('');
   const [hasDraftPrompt, setHasDraftPrompt] = useState(false);
   const [foundDraftText, setFoundDraftText] = useState('');
@@ -161,27 +164,46 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
     const controller = new AbortController();
     fetchArchive(controller.signal);
 
-    // Check for saved browser draft
+    return () => controller.abort();
+  }, [memoryKey]);
+
+  // Restore any draft saved for this archive only. Because drafts are
+  // namespaced by archive ID, they never leak between archives.
+  useEffect(() => {
+    const archiveId = data?.archive.id;
+    if (!archiveId) return;
     try {
-      const savedDraft = localStorage.getItem(draftStorageKey);
+      const savedDraft = sessionStorage.getItem(draftStorageKey(archiveId));
       if (savedDraft && savedDraft.trim().length > 0) {
         setFoundDraftText(savedDraft);
         setHasDraftPrompt(true);
       }
     } catch (e) {}
-    return () => controller.abort();
-  }, [memoryKey]);
+  }, [data?.archive.id]);
+
+  const clearCurrentDraft = () => {
+    const archiveId = data?.archive.id;
+    try {
+      sessionStorage.removeItem(draftStorageKey(archiveId));
+    } catch (e) {}
+    setMemoryText('');
+    setFoundDraftText('');
+    setHasDraftPrompt(false);
+  };
 
   // Handle local text change & auto-save draft
   const handleTextChange = (value: string) => {
     const sliced = value.slice(0, 2000);
     setMemoryText(sliced);
 
+    const archiveId = data?.archive.id;
+    if (!archiveId) return;
+
     try {
       if (sliced.trim().length > 0) {
-        localStorage.setItem(draftStorageKey, sliced);
+        sessionStorage.setItem(draftStorageKey(archiveId), sliced);
       } else {
-        localStorage.removeItem(draftStorageKey);
+        sessionStorage.removeItem(draftStorageKey(archiveId));
       }
     } catch (e) {}
   };
@@ -192,11 +214,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   };
 
   const handleDiscardDraft = () => {
-    try {
-      localStorage.removeItem(draftStorageKey);
-    } catch (e) {}
-    setFoundDraftText('');
-    setHasDraftPrompt(false);
+    clearCurrentDraft();
   };
 
   const handleStartReview = (e: React.FormEvent) => {
@@ -212,22 +230,20 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
     setSubmitError('');
 
     try {
-      if (data?.archive.archiveVersion === 2 && (!memoryKey || !data.archive.encryptionSalt)) {
-        setSubmitError('Your Recovery Phrase is required to seal a memory. Return home and open the archive again.');
+      // Only V2 archives can seal new memories. Legacy V1 archives remain
+      // readable, but never receive plaintext from the browser.
+      if (data?.archive.archiveVersion !== 2 || !memoryKey || !data.archive.encryptionSalt) {
+        setSubmitError('This archive uses an older format and can no longer seal new memories. Existing memories remain available.');
         setIsSubmitting(false);
         return;
       }
-      const encryptedV2 = data?.archive.archiveVersion === 2 && memoryKey && data.archive.encryptionSalt
-        ? await encryptV2Memory(memoryKey, data.archive.encryptionSalt, memoryText.trim(), data.archive.id)
-        : null;
-      if (encryptedV2) {
-        setMemoryText('');
-        try { localStorage.removeItem(draftStorageKey); } catch (e) {}
-      }
+      const encryptedV2 = await encryptV2Memory(memoryKey, data.archive.encryptionSalt, memoryText.trim(), data.archive.id);
+      setMemoryText('');
+      clearCurrentDraft();
       const res = await fetch('/api/archive/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-        body: JSON.stringify(encryptedV2 ? { encryptionVersion: 2, ...encryptedV2 } : { content: memoryText.trim() })
+        body: JSON.stringify({ encryptionVersion: 2, ...encryptedV2 })
       });
       const result = await res.json();
 
@@ -237,9 +253,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         setShowReviewModal(false);
       } else {
         // Clear local draft
-        try {
-          localStorage.removeItem(draftStorageKey);
-        } catch (e) {}
+        clearCurrentDraft();
 
         const unlockFormatted = new Date(result.unlockAt).toLocaleDateString('en-GB', {
           day: 'numeric',
@@ -302,9 +316,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         setDeleteError(result.error || 'Failed to delete archive.');
         setIsDeleting(false);
       } else {
-        try {
-          localStorage.removeItem(draftStorageKey);
-        } catch (e) {}
+        clearCurrentDraft();
         onSessionClosed ? onSessionClosed() : onGoHome();
       }
     } catch (err) {
@@ -327,6 +339,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         headers: { 'X-CSRF-Token': getCsrfToken() },
       });
     } finally {
+      clearCurrentDraft();
       onSessionClosed ? onSessionClosed() : onGoHome();
     }
   };
@@ -729,7 +742,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <span className="font-mono text-[10px] text-[#737373] tracking-wide italic">
-                  Drafts are stored only on this device until sealed.
+                  Drafts are kept in this browser tab only and are cleared when the tab closes, or when you seal, discard, or sign out.
                 </span>
 
                 <button

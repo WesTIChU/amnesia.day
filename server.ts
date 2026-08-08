@@ -4,10 +4,10 @@ import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
+import { pathToFileURL } from 'node:url';
 import {
   createArchiveV2,
   getMemoriesForArchiveSession,
-  addMemoryForSession,
   addEncryptedMemoryForSession,
   markMemoryReadForSession,
   deleteArchiveById,
@@ -20,7 +20,8 @@ import {
   destroySessionsForArchive,
   runTimekeeperProcess,
   getPublicStats,
-  getMachineMetrics
+  getMachineMetrics,
+  validateV2EncryptedMemory
 } from './server/db.js';
 
 const SESSION_COOKIE = 'amnesia_session';
@@ -56,19 +57,26 @@ function clearSessionCookies(res: { setHeader: (name: string, value: string[]) =
   ]);
 }
 
-function decodeBase64Url(value: unknown): Buffer | null {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  try {
-    return Buffer.from(value, 'base64url');
-  } catch {
-    return null;
+// Public telemetry results are cheap to produce but touch the database,
+// filesystem and operating system. Cache them briefly so repeated requests
+// cannot flood that work, and cap how often any single client may call them.
+const TELEMETRY_CACHE_TTL_MS = 60_000;
+const statsCache: { data: unknown; expiresAt: number } = { data: null, expiresAt: 0 };
+const machineCache: { data: unknown; expiresAt: number } = { data: null, expiresAt: 0 };
+
+function withTelemetryCache<T>(cache: { data: T | null; expiresAt: number }, compute: () => T): T {
+  const now = Date.now();
+  if (cache.data !== null && cache.expiresAt > now) {
+    return cache.data;
   }
+  const data = compute();
+  cache.data = data;
+  cache.expiresAt = now + TELEMETRY_CACHE_TTL_MS;
+  return data;
 }
 
-async function startServer() {
+export async function buildApp(): Promise<express.Express> {
   const app = express();
-  const PORT = 3000;
-  const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
 
   // Do not trust arbitrary X-Forwarded-For headers. Cloudflare's validated
   // client header is used for rate-limit keys only when explicitly enabled.
@@ -167,6 +175,15 @@ async function startServer() {
     message: { error: 'Too many destructive requests. Please try again later.' }
   });
 
+  const telemetryLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 30,
+    keyGenerator: (req) => getClientIp(req),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' }
+  });
+
   const requireSession = (req: any, res: any, next: any) => {
     const sessionToken = getCookie(req, SESSION_COOKIE);
     const session = sessionToken ? getSession(sessionToken) : null;
@@ -189,10 +206,9 @@ async function startServer() {
   app.use('/api/', generalLimiter);
 
   // API Endpoints
-  app.get('/api/stats', (req, res) => {
+  app.get('/api/stats', telemetryLimiter, (req, res) => {
     try {
-      const stats = getPublicStats();
-      res.json(stats);
+      res.json(withTelemetryCache(statsCache, () => getPublicStats()));
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to retrieve stats' });
     }
@@ -211,6 +227,9 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid archive authentication data.' });
       }
       const archive = createArchiveV2(lookupVerifier, authVerifier, authSalt);
+      if (!archive) {
+        return res.status(409).json({ error: 'This Recovery Phrase has been retired and cannot be used again.' });
+      }
       const session = createSessionV2(authVerifier, authSalt);
       if (!session) return res.status(500).json({ error: 'Could not establish archive session.' });
       setSessionCookies(res, session.sessionToken, session.csrfToken, isProduction);
@@ -272,35 +291,21 @@ async function startServer() {
 
   app.post('/api/archive/memory', requireSession, requireCsrf, (req, res) => {
     try {
-      if (req.body.encryptionVersion === 2) {
-        const { ciphertext, nonce, authTag, clientSalt, memoryId } = req.body;
-        const nonceBytes = decodeBase64Url(nonce);
-        const authTagBytes = decodeBase64Url(authTag);
-        const clientSaltBytes = decodeBase64Url(clientSalt);
-        if (!decodeBase64Url(ciphertext) || nonceBytes?.length !== 12 || authTagBytes?.length !== 16 || clientSaltBytes?.length !== 16 ||
-          typeof memoryId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(memoryId)) {
-          return res.status(400).json({ error: 'Invalid encrypted memory payload.' });
-        }
-        const result = addEncryptedMemoryForSession(res.locals.archiveId, { ciphertext, nonce, authTag, clientSalt, memoryId });
-        if (!result.success) return res.status(400).json({ error: result.message });
-        return res.json(result);
+      // Plaintext submissions are disabled. New memories must be encrypted in
+      // the browser before they reach the server.
+      if (req.body.encryptionVersion !== 2) {
+        return res.status(400).json({ error: 'Plaintext memory submissions are disabled. Only client-encrypted V2 memories are accepted.' });
       }
 
-      const { content } = req.body;
-      if (!content || typeof content !== 'string') {
-        return res.status(400).json({ error: 'Memory content is required.' });
+      const { ciphertext, nonce, authTag, clientSalt, memoryId } = req.body;
+      const invalid = validateV2EncryptedMemory({ ciphertext, nonce, authTag, clientSalt, memoryId });
+      if (invalid) {
+        return res.status(400).json({ error: invalid });
       }
 
-      const trimmedContent = content.trim();
-      if (!trimmedContent) return res.status(400).json({ error: 'Memory cannot be empty.' });
-      if (trimmedContent.length > 2000) return res.status(400).json({ error: 'Memory exceeds 2000 characters limit.' });
-
-      const result = addMemoryForSession(res.locals.archiveId, trimmedContent);
-      if (!result.success) {
-        return res.status(400).json({ error: result.message });
-      }
-
-      res.json(result);
+      const result = addEncryptedMemoryForSession(res.locals.archiveId, { ciphertext, nonce, authTag, clientSalt, memoryId });
+      if (!result.success) return res.status(400).json({ error: result.message });
+      return res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to archive memory.' });
     }
@@ -314,8 +319,11 @@ async function startServer() {
       }
 
       const result = markMemoryReadForSession(res.locals.archiveId, memoryId);
-      if (!result) {
+      if (result === null) {
         return res.status(404).json({ error: 'Memory or archive not found.' });
+      }
+      if (result.success === false) {
+        return res.status(409).json({ error: result.error });
       }
 
       res.json(result);
@@ -345,10 +353,9 @@ async function startServer() {
     }
   });
 
-  app.get('/api/machine', (req, res) => {
+  app.get('/api/machine', telemetryLimiter, (req, res) => {
     try {
-      const metrics = getMachineMetrics();
-      res.json(metrics);
+      res.json(withTelemetryCache(machineCache, () => getMachineMetrics()));
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to fetch machine telemetry.' });
     }
@@ -367,8 +374,12 @@ async function startServer() {
   } catch (e) {
     console.error('Initial Timekeeper run error:', e);
   }
-  // Vite middleware for development vs static serve for production
-  if (process.env.NODE_ENV !== 'production') {
+  // Vite middleware for development vs static serve for production.
+  // Skip both in tests: API integration tests run headless and must not
+  // spin up Vite's middleware (and its WebSocket/HMR handles).
+  if (process.env.NODE_ENV === 'test') {
+    // API-only mode; no static or dev middleware.
+  } else if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
@@ -382,9 +393,28 @@ async function startServer() {
     });
   }
 
+  return app;
+}
+
+async function startServer() {
+  const app = await buildApp();
+  const PORT = 3000;
+  const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
+
   app.listen(PORT, HOST, () => {
     console.log(`[Amnesia] Server listening on http://${HOST}:${PORT}`);
   });
 }
 
-startServer();
+// Only start the server when this module is executed directly. When imported
+// (e.g. by integration tests), expose the app for programmatic use.
+// The production bundle is CommonJS (require.main) while tsx runs this file
+// as ESM (import.meta.url), so both entrypoint checks are needed.
+const isMainModule = (() => {
+  if (typeof require !== 'undefined' && require.main === module) return true;
+  return Boolean(process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href);
+})();
+
+if (isMainModule) {
+  startServer();
+}
