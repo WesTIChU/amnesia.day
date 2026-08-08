@@ -28,53 +28,58 @@ export const Footer: React.FC<FooterProps> = ({
   }, []);
 
   return (
-    <footer className="no-print pt-12 pb-8 text-center text-xs tracking-wider text-[#888888] font-mono border-t border-[#1f1f1f] flex flex-col gap-6">
-      {/* Row 1: Nav Links */}
-      <div className="flex items-center justify-center gap-4 text-[#a3a3a3] text-[11px]">
-        {onNavigateTerms && (
-          <button onClick={onNavigateTerms} className="hover:text-white transition-colors cursor-pointer">
-            Terms
-          </button>
-        )}
-        {onNavigateTerms && onNavigatePrivacy && <span className="text-white/10">•</span>}
-        {onNavigatePrivacy && (
-          <button onClick={onNavigatePrivacy} className="hover:text-white transition-colors cursor-pointer">
-            Privacy
-          </button>
-        )}
-        {(onNavigateTerms || onNavigatePrivacy) && onNavigateAbout && <span className="text-white/10">•</span>}
-        {onNavigateAbout && (
-          <button onClick={onNavigateAbout} className="hover:text-white transition-colors cursor-pointer">
-            About
-          </button>
-        )}
-        <span className="text-white/10">•</span>
-        <a href="/faq" className="hover:text-white transition-colors">
-          FAQ
-        </a>
-        <span className="text-white/10">•</span>
-        <a
-          href="#"
-          onClick={(event) => event.preventDefault()}
-          className="hover:text-white transition-colors"
-          aria-label="GitHub repository link coming soon"
-        >
-          GitHub
-        </a>
+    <footer className="no-print pt-12 pb-8 text-center text-xs tracking-wider text-[#888888] font-mono border-t border-[#1f1f1f] flex flex-col gap-4 sm:gap-6">
+      {/* Row 1 & 2: Nav Links (stacked on mobile) */}
+      <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:items-center sm:gap-4 text-[#a3a3a3] text-[11px]">
+        <div className="flex items-center justify-center gap-4">
+          {onNavigateTerms && (
+            <button onClick={onNavigateTerms} className="hover:text-white transition-colors cursor-pointer">
+              Terms
+            </button>
+          )}
+          {onNavigateTerms && onNavigatePrivacy && <span className="text-white/10">•</span>}
+          {onNavigatePrivacy && (
+            <button onClick={onNavigatePrivacy} className="hover:text-white transition-colors cursor-pointer">
+              Privacy
+            </button>
+          )}
+          {(onNavigateTerms || onNavigatePrivacy) && onNavigateAbout && <span className="text-white/10">•</span>}
+          {onNavigateAbout && (
+            <button onClick={onNavigateAbout} className="hover:text-white transition-colors cursor-pointer">
+              About
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center gap-4">
+          <span className="hidden sm:inline text-white/10">•</span>
+          <a href="/faq" className="hover:text-white transition-colors">
+            FAQ
+          </a>
+          <span className="text-white/10">•</span>
+          <a
+            href="#"
+            onClick={(event) => event.preventDefault()}
+            className="hover:text-white transition-colors"
+            aria-label="GitHub repository link coming soon"
+          >
+            GitHub
+          </a>
+        </div>
       </div>
 
-      {/* Row 2: Raspberry Pi Status with CPU Usage & Machine Navigation */}
-      <div className="flex justify-center text-[10px] text-[#777777]">
+      {/* Row 3 & 4: Raspberry Pi sentence + stats (stacked on mobile) */}
+      <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3 text-[10px] text-[#777777]">
         {onNavigateMachine ? (
           <button
             onClick={onNavigateMachine}
-            className="hover:text-[#4A5D4E] transition-colors focus:outline-none cursor-pointer uppercase inline-flex flex-wrap items-center gap-2 group"
+            className="hover:text-[#4A5D4E] transition-colors focus:outline-none cursor-pointer uppercase inline-flex flex-col items-center gap-2 group sm:flex-row sm:items-center"
           >
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-[#4A5D4E] rounded-full"></span>
               Running quietly on a Raspberry Pi Zero 2 WH • The Timekeeper
             </span>
-            <span className="text-[#888888] font-mono border-l border-[#333333] pl-2">
+            <span className="text-[#888888] font-mono sm:border-l sm:border-[#333333] sm:pl-2">
               Load: {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} • Temp: {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
             </span>
           </button>

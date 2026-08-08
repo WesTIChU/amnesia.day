@@ -84,58 +84,60 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#080808]/90 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#121212] border border-[#262626] max-w-md w-full p-6 sm:p-8 space-y-6 text-center font-serif relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-[#737373] hover:text-[#e5e5e5] font-mono text-sm cursor-pointer"
-        >
-          ✕
-        </button>
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-[#121212] border border-[#262626] max-w-md w-full p-6 sm:p-8 space-y-6 text-center font-serif relative max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-[#737373] hover:text-[#e5e5e5] font-mono text-sm cursor-pointer"
+          >
+            ✕
+          </button>
 
-        <div className="space-y-2">
-          <h3 className="text-xl font-light tracking-widest text-[#e5e5e5] uppercase">
-            Open Archive
-          </h3>
-          <p className="text-xs text-[#a3a3a3] font-serif italic">
-             Enter your Memory Key to reveal your vault.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <input
-              type="text"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="e.g. ash-echo-midnight-forest-river-4821"
-              className="w-full px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] text-[#e5e5e5] font-mono text-xs tracking-wide placeholder-[#525252] outline-none transition-colors text-center"
-              autoFocus
-            />
-            {error && (
-              <p className="text-xs font-mono text-[#f87171] pt-1">
-                {error}
-              </p>
-            )}
+            <h3 className="text-xl font-light tracking-widest text-[#e5e5e5] uppercase">
+              Open Archive
+            </h3>
+            <p className="text-xs text-[#a3a3a3] font-serif italic">
+               Enter your Memory Key to reveal your vault.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 pt-2 font-mono text-xs">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a] transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !keyInput.trim()}
-              className="flex-1 py-3 bg-[#171717] hover:bg-[#262626] text-[#e5e5e5] border border-[#262626] hover:border-[#404040] disabled:opacity-50 tracking-wider uppercase transition-colors cursor-pointer"
-            >
-              {loading ? 'Opening...' : 'Unlock'}
-            </button>
-          </div>
-        </form>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder="e.g. ash-echo-midnight-forest-river-4821"
+                className="w-full px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] text-[#e5e5e5] font-mono text-xs tracking-wide placeholder-[#525252] outline-none transition-colors text-center"
+                autoFocus
+              />
+              {error && (
+                <p className="text-xs font-mono text-[#f87171] pt-1">
+                  {error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 pt-2 font-mono text-xs">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !keyInput.trim()}
+                className="flex-1 py-3 bg-[#171717] hover:bg-[#262626] text-[#e5e5e5] border border-[#262626] hover:border-[#404040] disabled:opacity-50 tracking-wider uppercase transition-colors cursor-pointer"
+              >
+                {loading ? 'Opening...' : 'Unlock'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
