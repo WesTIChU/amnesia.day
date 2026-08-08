@@ -94,7 +94,7 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
-      <div className="min-h-full flex items-center justify-center p-4">
+      <div className="min-h-full flex items-start sm:items-center justify-center p-4">
         <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <div className="space-y-2 text-center border-b border-[#262626] pb-4">
             <h3 className="text-sm font-light text-white uppercase tracking-[0.2em]">
