@@ -105,6 +105,18 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   const [isTimekeeperAwakening, setIsTimekeeperAwakening] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(() => ambientSound.getIsPlaying());
 
+  // Lock body scroll while any overlay modal is open so the page behind never
+  // pans or shifts (e.g. when the mobile keyboard opens on a focused input).
+  const isAnyModalOpen = showKeyModal || showReviewModal || showDeleteModal || showIntegrityModal;
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isAnyModalOpen]);
+
   const toggleAmbience = () => {
     setIsAudioPlaying(ambientSound.toggle());
   };
@@ -605,9 +617,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
       {/* Memory Key Modal / Reveal */}
       {showKeyModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
           <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-md w-full p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
               <div className="space-y-2 text-center border-b border-[#262626] pb-4">
                 <h3 className="text-sm font-light text-white uppercase tracking-[0.2em]">
                   Your Memory Key
@@ -775,9 +787,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
       {/* Final Review Modal Before Sealing */}
       {showReviewModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
           <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-xl w-full p-6 sm:p-10 space-y-6 font-serif shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-[#121212] border border-[#262626] max-w-xl w-full min-w-0 p-6 sm:p-10 space-y-6 font-serif shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
             <div className="space-y-2 text-center border-b border-[#262626] pb-4">
               <h3 className="text-xl font-light text-white uppercase tracking-[0.2em]">
                 Review your memory one final time
@@ -1042,9 +1054,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
       {/* Archive Integrity Modal */}
       {showIntegrityModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
           <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-sm w-full p-6 space-y-6 font-mono text-xs animate-fade-in shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-[#121212] border border-[#262626] max-w-sm w-full min-w-0 p-6 space-y-6 font-mono text-xs animate-fade-in shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
             <div className="space-y-1 border-b border-[#262626] pb-3 text-center">
               <h3 className="text-xs font-light text-white uppercase tracking-[0.2em]">Archive Integrity</h3>
               <p className="text-[10px] text-[#737373]">Verification Protocol & System Health</p>
@@ -1102,9 +1114,9 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
           <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-md w-full p-6 sm:p-8 space-y-6 font-serif max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+            <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-serif max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
             <div className="space-y-2">
               <h3 className="text-lg font-light text-[#f87171] uppercase tracking-widest">
                 Delete Archive

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { deriveV2AuthVerifier, deriveV2LookupVerifier } from '../lib/crypto';
 
 interface OpenArchiveModalProps {
@@ -16,6 +16,15 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const requestInFlight = useRef(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -84,9 +93,9 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="bg-[#121212] border border-[#262626] max-w-md w-full p-6 sm:p-8 space-y-6 text-center font-serif relative max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+        <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 text-center font-serif relative max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-[#737373] hover:text-[#e5e5e5] font-mono text-sm cursor-pointer"

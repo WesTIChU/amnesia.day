@@ -76,6 +76,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  // Every view change (link clicks, logging in, creating a key, browser
+  // back/forward) should land at the top of the page.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentView]);
+
   useEffect(() => {
     const path = window.location.pathname;
     const metadata: Record<string, { title: string; description: string }> = {
