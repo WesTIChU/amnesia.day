@@ -550,47 +550,56 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   return (
     <div className="min-h-screen bg-[#080808] text-[#D1D1D1] p-6 sm:p-12 lg:p-16 max-w-4xl mx-auto space-y-12 font-serif animate-fade-in">
       {/* Top Header */}
-      <div className="relative flex justify-between items-center border-b border-[#262626] pb-6 font-mono text-xs text-[#737373]">
-        <button
-          onClick={onGoHome}
-          className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest"
-        >
-          ← Return Home
-        </button>
-
-        {/* Site Name with Amnesia Fade Animation */}
-        <div className="absolute left-1/2 -translate-x-1/2">
+      <div className="relative border-b border-[#262626] pb-6 font-mono text-xs text-[#737373]">
+        {/* Desktop: logo centered in the same row */}
+        <div className="hidden sm:block absolute left-1/2 -translate-x-1/2">
           <AmnesiaLogo size="small" />
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <button
-            onClick={() => setShowKeyModal(true)}
-            className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest px-3 py-1"
-          >
-            <AmnesiaText text="Memory Key" autoAnimate={false} />
-          </button>
-          <button
-            onClick={toggleAmbience}
-            aria-label={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
-            aria-pressed={isAudioPlaying}
-            title={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
-            className={`p-2 border transition-colors cursor-pointer ${
-              isAudioPlaying
-                ? 'border-[#4A5D4E] text-[#4A5D4E]'
-                : 'border-transparent text-[#737373] hover:border-[#262626] hover:text-[#e5e5e5]'
-            }`}
-          >
-            {isAudioPlaying ? <Volume2 size={14} strokeWidth={1.5} /> : <VolumeX size={14} strokeWidth={1.5} />}
-          </button>
-          <button
-            onClick={handleCloseSession}
-            aria-label="Close session"
-            title="Close session"
-            className="p-2 text-[#737373] hover:text-[#e5e5e5] border border-transparent hover:border-[#262626] transition-colors cursor-pointer"
-          >
-            <LogOut size={14} strokeWidth={1.5} />
-          </button>
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between sm:items-center">
+          {/* Mobile: logo on its own centered row */}
+          <div className="sm:hidden">
+            <AmnesiaLogo size="small" />
+          </div>
+
+          <div className="flex items-center justify-between w-full sm:w-auto gap-3">
+            <button
+              onClick={onGoHome}
+              className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest"
+            >
+              ← Return Home
+            </button>
+
+            <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={() => setShowKeyModal(true)}
+                className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest px-3 py-1"
+              >
+                <AmnesiaText text="Memory Key" autoAnimate={false} />
+              </button>
+              <button
+                onClick={toggleAmbience}
+                aria-label={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
+                aria-pressed={isAudioPlaying}
+                title={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
+                className={`p-2 border transition-colors cursor-pointer ${
+                  isAudioPlaying
+                    ? 'border-[#4A5D4E] text-[#4A5D4E]'
+                    : 'border-transparent text-[#737373] hover:border-[#262626] hover:text-[#e5e5e5]'
+                }`}
+              >
+                {isAudioPlaying ? <Volume2 size={14} strokeWidth={1.5} /> : <VolumeX size={14} strokeWidth={1.5} />}
+              </button>
+              <button
+                onClick={handleCloseSession}
+                aria-label="Close session"
+                title="Close session"
+                className="p-2 text-[#737373] hover:text-[#e5e5e5] border border-transparent hover:border-[#262626] transition-colors cursor-pointer"
+              >
+                <LogOut size={14} strokeWidth={1.5} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
