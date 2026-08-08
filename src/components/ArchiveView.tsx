@@ -574,7 +574,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
             <AmnesiaLogo size="small" />
           </div>
 
-          <div className="flex items-center justify-between w-full sm:w-auto gap-3">
+          <div className="flex items-center justify-between w-full sm:w-full gap-3">
             <button
               onClick={onGoHome}
               className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest"

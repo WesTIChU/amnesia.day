@@ -34,8 +34,8 @@ Set `NODE_ENV=production` before running `npm run build && npm start`.
 
 The build keeps the two artifacts strictly separate:
 
-- `dist/` — public browser files only (`index.html`, `assets/`).
-- `server-dist/` — the private Node server bundle (`server.cjs`), which is
+- `dist/` - public browser files only (`index.html`, `assets/`).
+- `server-dist/` - the private Node server bundle (`server.cjs`), which is
   never served as static content and returns an explicit `404` if requested
   directly.
 

@@ -36,7 +36,7 @@ const questions = [
   },
   {
     question: 'When will a memory awaken?',
-    answer: 'One calendar year after it was sealed. The Amnesia server holds the material needed to decrypt the memory and releases it when its anniversary arrives; a background Timekeeper process marks due memories as released. The archive may show a short delay while that process runs. This release is enforced by the server and controls the normal archive interface — anyone who knows your Recovery Phrase could read a copy of the words kept on their own device at any time.',
+    answer: 'One calendar year after it was sealed. The Amnesia server holds the material needed to decrypt the memory and releases it when its anniversary arrives; a background Timekeeper process marks due memories as released. The archive may show a short delay while that process runs. This release is enforced by the server and controls the normal archive interface - anyone who knows your Recovery Phrase could read a copy of the words kept on their own device at any time.',
   },
   {
     question: 'What happens if I lose my Recovery Phrase?',

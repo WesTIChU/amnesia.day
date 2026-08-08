@@ -42,7 +42,7 @@ export const TermsView: React.FC<TermsViewProps> = ({
           <section className="space-y-2">
             <h2 className="text-white text-xs tracking-wider uppercase font-semibold">2. Key Responsibility</h2>
             <p>
-              Your Memory Key is the sole cryptographic unlock mechanism for your stored memories. If you lose your Memory Key, your archive cannot be recovered by anyone—including the administrators of Amnesia.
+              Your Memory Key is the sole cryptographic unlock mechanism for your stored memories. If you lose your Memory Key, your archive cannot be recovered by anyone-including the administrators of Amnesia.
             </p>
           </section>
 

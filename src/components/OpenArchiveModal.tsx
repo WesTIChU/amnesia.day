@@ -95,7 +95,7 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
       <div className="min-h-full flex items-start sm:items-center justify-center p-4">
-        <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+        <div className="bg-[#121212] border border-[#262626] w-full max-w-[min(28rem,calc(100vw-2rem))] min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <div className="space-y-2 text-center border-b border-[#262626] pb-4">
             <h3 className="text-sm font-light text-white uppercase tracking-[0.2em]">
               Open Archive
@@ -112,7 +112,7 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 placeholder="e.g. ash-echo-midnight-forest-river-4821"
-                className="w-full px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] text-[#e5e5e5] font-mono text-xs tracking-wide placeholder-[#525252] outline-none transition-colors text-center"
+                className="w-full max-w-full min-w-0 px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] text-[#e5e5e5] font-mono text-base sm:text-xs tracking-wide placeholder-[#525252] outline-none transition-colors text-center"
                 autoCapitalize="off"
                 autoComplete="off"
                 spellCheck={false}
@@ -124,18 +124,18 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-3 pt-2 font-mono text-xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 font-mono text-xs">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a] transition-colors cursor-pointer"
+                className="w-full flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] hover:bg-[#1a1a1a] transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading || !keyInput.trim()}
-                className="flex-1 py-3 bg-[#171717] hover:bg-[#262626] text-[#e5e5e5] border border-[#262626] hover:border-[#404040] disabled:opacity-50 tracking-wider uppercase transition-colors cursor-pointer"
+                className="w-full flex-1 py-3 bg-[#171717] hover:bg-[#262626] text-[#e5e5e5] border border-[#262626] hover:border-[#404040] disabled:opacity-50 tracking-wider uppercase transition-colors cursor-pointer"
               >
                 {loading ? 'Opening...' : 'Unlock'}
               </button>
