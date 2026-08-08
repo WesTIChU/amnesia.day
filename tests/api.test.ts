@@ -19,7 +19,13 @@ process.env.NODE_ENV = 'test';
 // test file keeps the module's promise pending until the event loop drains,
 // which node:test reports as a cancelled file.
 let buildApp: () => Promise<import('express').Express>;
-let db: { close: () => void; prepare: (sql: string) => { run: (...args: unknown[]) => unknown } };
+let db: {
+  close: () => void;
+  prepare: (sql: string) => {
+    run: (...args: unknown[]) => unknown;
+    get: (...args: unknown[]) => any;
+  };
+};
 let createV2MemoryKey: () => { key: string; authSalt: string };
 let deriveV2AuthVerifier: (key: string, authSaltOverride?: string) => Promise<{ authVerifier: string; authSalt: string }>;
 let deriveV2LookupVerifier: (key: string) => Promise<string>;
@@ -298,4 +304,154 @@ test('public telemetry endpoints stay reachable', async () => {
   const machine = await machineRes.json();
   assert.ok(typeof machine.archivesCount === 'number');
   assert.ok(typeof machine.memoriesCount === 'number');
+});
+
+test('unlocked memories with a future or invalid unlock_at stay sealed', async () => {
+  const client = createClient(baseUrl);
+  const { key, archiveId, encryptionSalt } = await createArchive(client);
+  const { memoryId } = await sealMemory(client, key, archiveId, encryptionSalt, 'still sealed');
+
+  // Simulate the Timekeeper marking the memory unlocked before its release time.
+  db.prepare('UPDATE memories SET unlocked = 1, unlock_at = ? WHERE id = ?').run(
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    memoryId,
+  );
+
+  let data = await fetchArchive(client);
+  assert.equal(data.memories.length, 1);
+  assert.equal(data.memories[0].unlocked, false, 'a future unlock_at must keep the memory sealed');
+  assert.equal(data.memories[0].unlockMaterial, undefined, 'no Timekeeper material may be returned');
+  assert.equal(data.memories[0].content, undefined, 'no content may be returned');
+
+  const futureRead = await client.request('/api/archive/memory/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': client.csrf },
+    body: JSON.stringify({ memoryId }),
+  });
+  assert.equal(futureRead.status, 409, 'marking a future-unlocked memory as read must be rejected');
+
+  // An unparseable date must be treated as locked too.
+  db.prepare('UPDATE memories SET unlocked = 1, unlock_at = ? WHERE id = ?').run('not-a-valid-date', memoryId);
+  data = await fetchArchive(client);
+  assert.equal(data.memories[0].unlocked, false, 'invalid dates must never release a memory');
+  assert.equal(data.memories[0].unlockMaterial, undefined);
+  assert.equal(data.memories[0].content, undefined);
+
+  const invalidRead = await client.request('/api/archive/memory/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': client.csrf },
+    body: JSON.stringify({ memoryId }),
+  });
+  assert.equal(invalidRead.status, 409, 'marking an invalid-date memory as read must be rejected');
+});
+
+test('archive authentication fields are strictly validated', async () => {
+  const client = createClient(baseUrl);
+  const generated = createV2MemoryKey();
+  const auth = await deriveV2AuthVerifier(generated.key, generated.authSalt);
+  const lookupVerifier = await deriveV2LookupVerifier(generated.key);
+
+  const archivesBefore = db.prepare('SELECT COUNT(*) AS cnt FROM archives').get().cnt;
+  const bytes = (n: number) => Buffer.alloc(n, 0x41).toString('base64url');
+
+  const invalidBodies: Array<[string, Record<string, unknown>]> = [
+    ['lookupVerifier too short (16 bytes)', { ...auth, lookupVerifier: bytes(16) }],
+    ['lookupVerifier too long (40 bytes)', { ...auth, lookupVerifier: bytes(40) }],
+    ['authVerifier too short (16 bytes)', { lookupVerifier, authVerifier: bytes(16), authSalt: auth.authSalt }],
+    ['authVerifier too long (40 bytes)', { lookupVerifier, authVerifier: bytes(40), authSalt: auth.authSalt }],
+    ['authSalt too short (8 bytes)', { lookupVerifier, authVerifier: auth.authVerifier, authSalt: bytes(8) }],
+    ['authSalt too long (24 bytes)', { lookupVerifier, authVerifier: auth.authVerifier, authSalt: bytes(24) }],
+    ['malformed base64url characters', { lookupVerifier: '!!!not-base64url!!!', authVerifier: auth.authVerifier, authSalt: auth.authSalt }],
+    ['empty values', { lookupVerifier: '', authVerifier: '', authSalt: '' }],
+    ['oversized lookupVerifier', { lookupVerifier: 'A'.repeat(1000), authVerifier: auth.authVerifier, authSalt: auth.authSalt }],
+  ];
+
+  for (const [label, body] of invalidBodies) {
+    const res = await client.request('/api/archive/create-v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(res.status, 400, `create-v2 should reject: ${label}`);
+  }
+
+  // Rejected creations must not write anything to the database.
+  const archivesAfter = db.prepare('SELECT COUNT(*) AS cnt FROM archives').get().cnt;
+  assert.equal(archivesAfter, archivesBefore, 'rejected creations must not write to the database');
+
+  // lookup-v2 rejects wrong-sized lookup verifiers.
+  const lookupBad = await client.request('/api/archive/lookup-v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lookupVerifier: bytes(16) }),
+  });
+  assert.equal(lookupBad.status, 400, 'lookup-v2 should reject a short lookup verifier');
+
+  // V2 open rejects wrong-sized authentication fields.
+  const openBad = await client.request('/api/archive/open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version: 2, authVerifier: bytes(16), authSalt: bytes(8) }),
+  });
+  assert.equal(openBad.status, 400, 'open should reject malformed V2 authentication fields');
+
+  // A well-formed request must still succeed afterwards.
+  const ok = await client.request('/api/archive/create-v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...auth, lookupVerifier }),
+  });
+  assert.equal(ok.status, 200, 'a valid create-v2 must still succeed');
+});
+
+test('simultaneous submissions produce one success and one daily-limit conflict', async () => {
+  const client = createClient(baseUrl);
+  const { key, archiveId, encryptionSalt } = await createArchive(client);
+
+  const submit = async (plaintext: string) => {
+    const inner = await encryptV2Memory(key, encryptionSalt, plaintext, archiveId);
+    return client.request('/api/archive/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': client.csrf },
+      body: JSON.stringify({ encryptionVersion: 2, ...inner }),
+    });
+  };
+
+  const [first, second] = await Promise.all([submit('first attempt'), submit('second attempt')]);
+  assert.deepEqual(
+    [first.status, second.status].sort(),
+    [200, 409],
+    'one concurrent submission succeeds and the other conflicts on the daily limit',
+  );
+
+  const data = await fetchArchive(client);
+  assert.equal(data.memories.length, 1, 'only one memory may be written per archive per UTC day');
+});
+
+test('the database rejects a second memory row on the same UTC day', async () => {
+  const client = createClient(baseUrl);
+  const { key, archiveId, encryptionSalt } = await createArchive(client);
+  const { memoryId } = await sealMemory(client, key, archiveId, encryptionSalt, 'day one');
+
+  const row = db.prepare('SELECT archive_id AS archiveId, memory_day AS memoryDay, created_at AS createdAt, unlock_at AS unlockAt FROM memories WHERE id = ?').get(memoryId);
+  assert.ok(row.memoryDay, 'memory_day should be present');
+
+  // The unique (archive_id, memory_day) index must refuse a direct duplicate
+  // insert even when the application-level check is bypassed.
+  assert.throws(
+    () => {
+      db.prepare(`
+        INSERT INTO memories (archive_id, encrypted_content, ciphertext, encrypted_dek, nonce, auth_tag, encryption_version, created_at, unlock_at, unlocked, memory_day)
+        VALUES (?, ?, ?, NULL, ?, ?, 1, ?, ?, 0, ?)
+      `).run(
+        row.archiveId, '[X]', 'ciphertext', 'nonce', 'authTag',
+        row.createdAt, row.unlockAt, row.memoryDay,
+      );
+    },
+    (err) => (err as { errcode?: number }).errcode === 2067,
+    'duplicate memory_day must violate the unique index',
+  );
+
+  const count = db.prepare('SELECT COUNT(*) AS cnt FROM memories WHERE archive_id = ?').get(row.archiveId).cnt;
+  assert.equal(count, 1, 'no extra memory row should exist');
 });

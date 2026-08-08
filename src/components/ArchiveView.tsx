@@ -238,8 +238,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         return;
       }
       const encryptedV2 = await encryptV2Memory(memoryKey, data.archive.encryptionSalt, memoryText.trim(), data.archive.id);
-      setMemoryText('');
-      clearCurrentDraft();
       const res = await fetch('/api/archive/memory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
@@ -248,11 +246,13 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
       const result = await res.json();
 
       if (!res.ok) {
+        // Keep the visible text and the saved draft untouched: only the API
+        // confirming success may clear them.
         setSubmitError(result.error || 'Could not archive memory.');
         setIsSubmitting(false);
         setShowReviewModal(false);
       } else {
-        // Clear local draft
+        // Clear local draft only after the archive has confirmed the write.
         clearCurrentDraft();
 
         const unlockFormatted = new Date(result.unlockAt).toLocaleDateString('en-GB', {

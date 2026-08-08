@@ -30,6 +30,7 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
   PRAGMA foreign_keys = ON;
+  PRAGMA busy_timeout = 5000;
 
   CREATE TABLE IF NOT EXISTS archives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,6 +136,37 @@ export function validateV2EncryptedMemory(payload: unknown): string | null {
   return null;
 }
 
+// node:sqlite surfaces SQLite constraint failures as ERR_SQLITE_ERROR with the
+// underlying SQLite errcode. SQLITE_CONSTRAINT_UNIQUE is 2067.
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: string }).code === 'ERR_SQLITE_ERROR' &&
+    (err as { errcode?: number }).errcode === 2067
+  );
+}
+
+// A memory is released only once the Timekeeper has marked it unlocked AND
+// its release time has actually arrived. Invalid or malformed dates never
+// release a memory.
+export function isMemoryReleased(unlocked: number | null, unlockAt: string): boolean {
+  if (!unlocked) return false;
+  const releaseTime = Date.parse(unlockAt);
+  if (!Number.isFinite(releaseTime)) return false;
+  return releaseTime <= Date.now();
+}
+
+export const DAILY_LIMIT_MESSAGE = 'You have already written a memory today. Only one memory is permitted per day.';
+
+export type AddMemoryResult =
+  | { success: true; message: string; memoryId: number; unlockAt: string }
+  | { success: false; code: 'daily-limit' | 'invalid'; message: string };
+
+export type CreateArchiveV2Result =
+  | { ok: true; archiveId: number; createdAt: string; encryptionSalt: string }
+  | { ok: false; reason: 'retired' | 'duplicate' };
+
 // Run migration check for memories table columns
 try {
   const archiveTableInfo = db.prepare("PRAGMA table_info(archives)").all() as Array<{ name: string }>;
@@ -174,8 +206,92 @@ try {
   if (!colNames.includes('timekeeper_ciphertext')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_ciphertext TEXT;');
   if (!colNames.includes('timekeeper_nonce')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_nonce TEXT;');
   if (!colNames.includes('timekeeper_auth_tag')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_auth_tag TEXT;');
+  if (!colNames.includes('memory_day')) db.exec('ALTER TABLE memories ADD COLUMN memory_day TEXT;');
 } catch (e) {
   console.error('Schema check on memories table:', e);
+}
+
+// One-memory-per-UTC-day migration. Backfills the denormalised UTC calendar
+// day from created_at (ISO-8601 UTC), then fails closed: historical duplicate
+// (archive_id, memory_day) pairs, or any failure while backfilling, creating,
+// or verifying the unique index, aborts startup. Historical memories are never
+// deleted, merged, or rewritten.
+export function runMemoryDayMigration(targetDb: DatabaseSync): void {
+  targetDb.exec(`
+    UPDATE memories
+    SET memory_day = substr(created_at, 1, 10)
+    WHERE memory_day IS NULL AND created_at IS NOT NULL AND length(created_at) >= 10;
+  `);
+
+  const duplicates = targetDb.prepare(`
+    SELECT archive_id, memory_day, COUNT(*) AS row_count
+    FROM memories
+    WHERE memory_day IS NOT NULL
+    GROUP BY archive_id, memory_day
+    HAVING COUNT(*) > 1
+    ORDER BY archive_id, memory_day
+  `).all() as Array<{ archive_id: number; memory_day: string; row_count: number }>;
+
+  if (duplicates.length > 0) {
+    const details = duplicates
+      .map((d) => `archive ${d.archive_id} on UTC day ${d.memory_day} (${d.row_count} memories)`)
+      .join('; ');
+    throw new Error(
+      `Memory archives contain more than one memory for the same UTC day: ${details}. ` +
+      'Each archive is limited to one memory per UTC day. ' +
+      'Resolve these conflicting memories manually before starting the server. ' +
+      'The unique per-day index was NOT created and no memories were deleted, merged, or rewritten.'
+    );
+  }
+
+  targetDb.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_archive_day
+      ON memories(archive_id, memory_day)
+      WHERE memory_day IS NOT NULL;
+  `);
+
+  const indexList = targetDb.prepare("PRAGMA index_list('memories')").all() as Array<{ name: string; unique: number }>;
+  const index = indexList.find((entry) => entry.name === 'idx_memories_archive_day');
+  if (!index || index.unique !== 1) {
+    throw new Error(
+      'The unique per-day index idx_memories_archive_day is missing or is not unique. ' +
+      'Startup aborted because the one-memory-per-day guarantee cannot be enforced. ' +
+      'No memories were deleted, merged, or rewritten.'
+    );
+  }
+}
+runMemoryDayMigration(db);
+
+// Unique active lookup identifier migration. Duplicate non-null lookup hashes
+// indicate corrupted or conflicting archives; the server refuses to start
+// rather than silently deleting or merging them.
+try {
+  const duplicateLookup = db.prepare(`
+    SELECT auth_lookup_hash
+    FROM archives
+    WHERE auth_lookup_hash IS NOT NULL
+    GROUP BY auth_lookup_hash
+    HAVING COUNT(*) > 1
+    LIMIT 1
+  `).get() as { auth_lookup_hash: string } | undefined;
+
+  if (duplicateLookup) {
+    throw new Error(
+      `Found duplicate active archive lookup identifier (auth_lookup_hash=${duplicateLookup.auth_lookup_hash}). ` +
+      'Duplicate archives must be resolved manually before the unique index can be created. ' +
+      'No archives were deleted or merged.'
+    );
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_archives_auth_lookup_unique
+      ON archives(auth_lookup_hash)
+      WHERE auth_lookup_hash IS NOT NULL;
+  `);
+} catch (e) {
+  if (e instanceof Error && e.message.startsWith('Found duplicate active archive lookup identifier')) {
+    throw e;
+  }
+  console.error('Schema check on archives.auth_lookup_hash:', e);
 }
 
 // Migrate existing memories to Envelope Encryption
@@ -326,7 +442,7 @@ export function createArchive(): { key: string; createdAt: string } {
   return { key, createdAt: now };
 }
 
-export function createArchiveV2(lookupVerifier: string, authVerifier: string, authSalt: string): { archiveId: number; createdAt: string; encryptionSalt: string } | null {
+export function createArchiveV2(lookupVerifier: string, authVerifier: string, authSalt: string): CreateArchiveV2Result {
   const now = new Date().toISOString();
   const encryptionSalt = crypto.randomBytes(16).toString('base64url');
   const authVerifierHash = `$v2$${archiveAuthLookup(authVerifier)}`;
@@ -335,13 +451,23 @@ export function createArchiveV2(lookupVerifier: string, authVerifier: string, au
   // Reject retired Recovery Phrases: the raw phrase is never stored, only a
   // non-reversible HMAC lookup identifier recorded at deletion time.
   const retired = db.prepare('SELECT 1 FROM retired_keys WHERE key_hash = ? OR auth_lookup_hash = ? LIMIT 1').get(authVerifierHash, authLookupHash);
-  if (retired) return null;
+  if (retired) return { ok: false, reason: 'retired' };
 
-  const result = db.prepare(`
-    INSERT INTO archives (key_hash, auth_lookup_hash, created_at, last_active_at, archive_version, auth_salt, encryption_salt)
-    VALUES (?, ?, ?, ?, 2, ?, ?)
-  `).run(authVerifierHash, authLookupHash, now, now, authSalt, encryptionSalt);
-  return { archiveId: Number(result.lastInsertRowid), createdAt: now, encryptionSalt };
+  // Reject an identifier already held by an active archive. The unique index
+  // backstops the concurrent case below.
+  const active = db.prepare('SELECT 1 FROM archives WHERE auth_lookup_hash = ? LIMIT 1').get(authLookupHash);
+  if (active) return { ok: false, reason: 'duplicate' };
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO archives (key_hash, auth_lookup_hash, created_at, last_active_at, archive_version, auth_salt, encryption_salt)
+      VALUES (?, ?, ?, ?, 2, ?, ?)
+    `).run(authVerifierHash, authLookupHash, now, now, authSalt, encryptionSalt);
+    return { ok: true, archiveId: Number(result.lastInsertRowid), createdAt: now, encryptionSalt };
+  } catch (err) {
+    if (isUniqueConstraintError(err)) return { ok: false, reason: 'duplicate' };
+    throw err;
+  }
 }
 
 function findArchiveByAuth(authVerifier: string, authSalt: string) {
@@ -394,16 +520,16 @@ function findArchiveByKey(rawKey: string): { id: number; keyHash: string; create
 }
 
 // Add Memory
-export function addMemory(rawKey: string, text: string): { success: boolean; message: string; memoryId?: number; unlockAt?: string } {
+export function addMemory(rawKey: string, text: string): AddMemoryResult {
   const archive = getArchiveByKey(rawKey);
   if (!archive) {
-    return { success: false, message: 'Invalid Memory Key' };
+    return { success: false, code: 'invalid', message: 'Invalid Memory Key' };
   }
 
   return addMemoryToArchive(archive.id, text);
 }
 
-export function addMemoryForSession(archiveId: number, text: string): ReturnType<typeof addMemory> {
+export function addMemoryForSession(archiveId: number, text: string): AddMemoryResult {
   return addMemoryToArchive(archiveId, text);
 }
 
@@ -413,19 +539,15 @@ export function addEncryptedMemoryForSession(archiveId: number, payload: {
   authTag: string;
   clientSalt: string;
   memoryId: string;
-}): { success: boolean; message: string; memoryId?: number; unlockAt?: string } {
+}): AddMemoryResult {
   const archive = getArchiveByIdForSession(archiveId);
-  if (!archive || archive.archiveVersion !== 2) return { success: false, message: 'V2 archive required.' };
+  if (!archive || archive.archiveVersion !== 2) return { success: false, code: 'invalid', message: 'V2 archive required.' };
 
   const invalid = validateV2EncryptedMemory(payload);
-  if (invalid) return { success: false, message: invalid };
-
-  const todayPrefix = new Date().toISOString().slice(0, 10);
-  if (db.prepare('SELECT id FROM memories WHERE archive_id = ? AND created_at LIKE ?').get(archiveId, `${todayPrefix}%`)) {
-    return { success: false, message: 'You have already written a memory today. Only one memory is permitted per day.' };
-  }
+  if (invalid) return { success: false, code: 'invalid', message: invalid };
 
   const now = new Date();
+  const dayKey = now.toISOString().slice(0, 10); // UTC calendar day YYYY-MM-DD
   const unlockDate = new Date(now);
   unlockDate.setUTCFullYear(unlockDate.getUTCFullYear() + 1);
   const unlockAt = unlockDate.toISOString();
@@ -433,50 +555,53 @@ export function addEncryptedMemoryForSession(archiveId: number, payload: {
     JSON.stringify(payload),
     buildV2TimekeeperAad(archiveId, payload.memoryId, unlockAt),
   );
-  const result = db.prepare(`
-    INSERT INTO memories (
-      archive_id, encrypted_content, ciphertext, encrypted_dek, nonce, auth_tag,
-      encryption_version, client_salt, client_memory_id, timekeeper_secret, timekeeper_ciphertext,
-      timekeeper_nonce, timekeeper_auth_tag, created_at, unlock_at, unlocked
-    ) VALUES (?, ?, ?, NULL, ?, ?, 2, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-  `).run(
-    archiveId, '[CLIENT_ENCRYPTED_V2]', payload.ciphertext, payload.nonce, payload.authTag,
-    payload.clientSalt, payload.memoryId, timekeeper.secret, timekeeper.ciphertext, timekeeper.nonce,
-    timekeeper.authTag, now.toISOString(), unlockAt
-  );
 
-  return { success: true, message: 'Memory archived.', memoryId: Number(result.lastInsertRowid), unlockAt };
+  // BEGIN IMMEDIATE takes the SQLite write lock so two simultaneous requests
+  // cannot both pass the per-day check; the unique (archive_id, memory_day)
+  // index backstops this at the database level.
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (db.prepare('SELECT id FROM memories WHERE archive_id = ? AND memory_day = ?').get(archiveId, dayKey)) {
+      db.exec('ROLLBACK');
+      return { success: false, code: 'daily-limit', message: DAILY_LIMIT_MESSAGE };
+    }
+    const result = db.prepare(`
+      INSERT INTO memories (
+        archive_id, encrypted_content, ciphertext, encrypted_dek, nonce, auth_tag,
+        encryption_version, client_salt, client_memory_id, timekeeper_secret, timekeeper_ciphertext,
+        timekeeper_nonce, timekeeper_auth_tag, created_at, unlock_at, unlocked, memory_day
+      ) VALUES (?, ?, ?, NULL, ?, ?, 2, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(
+      archiveId, '[CLIENT_ENCRYPTED_V2]', payload.ciphertext, payload.nonce, payload.authTag,
+      payload.clientSalt, payload.memoryId, timekeeper.secret, timekeeper.ciphertext, timekeeper.nonce,
+      timekeeper.authTag, now.toISOString(), unlockAt, dayKey
+    );
+    db.exec('COMMIT');
+    return { success: true, message: 'Memory archived.', memoryId: Number(result.lastInsertRowid), unlockAt };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    if (isUniqueConstraintError(err)) {
+      return { success: false, code: 'daily-limit', message: DAILY_LIMIT_MESSAGE };
+    }
+    throw err;
+  }
 }
 
-function addMemoryToArchive(archiveId: number, text: string): ReturnType<typeof addMemory> {
+function addMemoryToArchive(archiveId: number, text: string): AddMemoryResult {
   const archive = getArchiveByIdForSession(archiveId);
-  if (!archive) return { success: false, message: 'Archive session is invalid' };
+  if (!archive) return { success: false, code: 'invalid', message: 'Archive session is invalid' };
 
   const trimmedText = text.trim();
   if (!trimmedText) {
-    return { success: false, message: 'Memory cannot be empty' };
+    return { success: false, code: 'invalid', message: 'Memory cannot be empty' };
   }
 
   if (trimmedText.length > 2000) {
-    return { success: false, message: 'Memory exceeds 2000 characters limit' };
-  }
-
-  // Check if memory was already created today for this archive (UTC calendar day YYYY-MM-DD)
-  const todayPrefix = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const checkStmt = db.prepare(`
-    SELECT id FROM memories
-    WHERE archive_id = ? AND created_at LIKE ?
-  `);
-  const existingToday = checkStmt.get(archive.id, `${todayPrefix}%`);
-
-  if (existingToday) {
-    return {
-      success: false,
-      message: 'You have already written a memory today. Only one memory is permitted per day.'
-    };
+    return { success: false, code: 'invalid', message: 'Memory exceeds 2000 characters limit' };
   }
 
   const now = new Date();
+  const dayKey = now.toISOString().slice(0, 10); // UTC calendar day YYYY-MM-DD
   const createdAtIso = now.toISOString();
 
   const unlockDate = new Date(now);
@@ -487,27 +612,41 @@ function addMemoryToArchive(archiveId: number, text: string): ReturnType<typeof 
   // Encrypt memory using Envelope Encryption (DEK + Master Key)
   const envelope = encryptMemoryEnvelope(trimmedText);
 
-  const insertStmt = db.prepare(`
-    INSERT INTO memories (archive_id, encrypted_content, ciphertext, encrypted_dek, nonce, auth_tag, encryption_version, created_at, unlock_at, unlocked)
-    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 0)
-  `);
-  const result = insertStmt.run(
-    archive.id,
-    '[ENCRYPTED_E2E]',
-    envelope.ciphertext,
-    envelope.encryptedDek,
-    envelope.nonce,
-    envelope.authTag,
-    createdAtIso,
-    unlockAtIso
-  );
-
-  return {
-    success: true,
-    message: 'Memory archived.',
-    memoryId: Number(result.lastInsertRowid),
-    unlockAt: unlockAtIso
-  };
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (db.prepare('SELECT id FROM memories WHERE archive_id = ? AND memory_day = ?').get(archive.id, dayKey)) {
+      db.exec('ROLLBACK');
+      return { success: false, code: 'daily-limit', message: DAILY_LIMIT_MESSAGE };
+    }
+    const insertStmt = db.prepare(`
+      INSERT INTO memories (archive_id, encrypted_content, ciphertext, encrypted_dek, nonce, auth_tag, encryption_version, created_at, unlock_at, unlocked, memory_day)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?)
+    `);
+    const result = insertStmt.run(
+      archive.id,
+      '[ENCRYPTED_E2E]',
+      envelope.ciphertext,
+      envelope.encryptedDek,
+      envelope.nonce,
+      envelope.authTag,
+      createdAtIso,
+      unlockAtIso,
+      dayKey
+    );
+    db.exec('COMMIT');
+    return {
+      success: true,
+      message: 'Memory archived.',
+      memoryId: Number(result.lastInsertRowid),
+      unlockAt: unlockAtIso
+    };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    if (isUniqueConstraintError(err)) {
+      return { success: false, code: 'daily-limit', message: DAILY_LIMIT_MESSAGE };
+    }
+    throw err;
+  }
 }
 
 function getArchiveByIdForSession(archiveId: number): { id: number; createdAt: string; lastActiveAt: string; previousLastActiveAt: string; archiveVersion: number; encryptionSalt: string | null } | null {
@@ -582,7 +721,11 @@ function getMemoriesForArchiveId(archiveId: number): ArchiveDataResponse | null 
   let nextUnlockDate: string | null = null;
 
   const processedMemories = rows.map((row) => {
-    const isUnlocked = Boolean(row.unlocked);
+    // A memory is only released when the Timekeeper has marked it unlocked
+    // AND its release time has actually arrived. This prevents a memory that
+    // was flagged unlocked but whose unlock_at is still in the future from
+    // ever leaking its content or Timekeeper material.
+    const isUnlocked = isMemoryReleased(row.unlocked, row.unlockAt);
     if (row.createdAt.startsWith(todayPrefix)) {
       hasWrittenToday = true;
     }
@@ -702,10 +845,11 @@ function markMemoryReadForArchive(archiveId: number, memoryId: number): MarkMemo
 
   // A memory may only be marked as read once it has been released by the
   // Timekeeper (unlocked = 1) and its unlock time has actually arrived.
+  // Invalid or malformed dates never count as released.
   if (!memoryRow.unlocked) {
     return { success: false, error: 'This memory is still sealed and cannot be read yet.' };
   }
-  if (new Date(memoryRow.unlockAt).getTime() > Date.now()) {
+  if (!isMemoryReleased(memoryRow.unlocked, memoryRow.unlockAt)) {
     return { success: false, error: 'This memory has not reached its release time yet.' };
   }
 
