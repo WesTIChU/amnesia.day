@@ -30,6 +30,27 @@ rate-limit identity. The application never trusts arbitrary
 
 Set `NODE_ENV=production` before running `npm run build && npm start`.
 
+### Deployment
+
+The build keeps the two artifacts strictly separate:
+
+- `dist/` — public browser files only (`index.html`, `assets/`).
+- `server-dist/` — the private Node server bundle (`server.cjs`), which is
+  never served as static content and returns an explicit `404` if requested
+  directly.
+
+Example systemd unit:
+
+```
+[Service]
+WorkingDirectory=/home/polza/amnesia
+Environment=NODE_ENV=production
+Environment=KEY_PEPPER=...
+Environment=TRUST_CLOUDFLARE_PROXY=true
+ExecStart=/usr/bin/node /home/polza/amnesia/server-dist/server.cjs
+Restart=always
+```
+
 ## Timekeeper
 
 Run the local Timekeeper process from a systemd timer once per hour or at midnight:

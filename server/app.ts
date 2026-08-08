@@ -420,7 +420,13 @@ export async function buildApp(): Promise<express.Express> {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = process.env.AMNESIA_DIST_PATH || path.join(process.cwd(), 'dist');
+    // The server bundle and its source map are built into server-dist/ (outside
+    // the public tree) and must never be served. Direct requests return an
+    // explicit 404 rather than falling through to the SPA fallback.
+    app.get(['/server.cjs', '/server.cjs.map'], (req, res) => {
+      res.status(404).type('text/plain').send('Not found');
+    });
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

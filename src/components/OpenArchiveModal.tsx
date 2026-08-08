@@ -95,20 +95,13 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 text-center font-serif relative max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-[#737373] hover:text-[#e5e5e5] font-mono text-sm cursor-pointer"
-          >
-            ✕
-          </button>
-
-          <div className="space-y-2">
-            <h3 className="text-xl font-light tracking-widest text-[#e5e5e5] uppercase">
+        <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+          <div className="space-y-2 text-center border-b border-[#262626] pb-4">
+            <h3 className="text-sm font-light text-white uppercase tracking-[0.2em]">
               Open Archive
             </h3>
-            <p className="text-xs text-[#a3a3a3] font-serif italic">
-               Enter your Memory Key to reveal your vault.
+            <p className="text-[10px] text-[#737373] tracking-wide">
+              Enter your Memory Key to reveal your vault.
             </p>
           </div>
 
@@ -120,7 +113,9 @@ export const OpenArchiveModal: React.FC<OpenArchiveModalProps> = ({
                 onChange={(e) => setKeyInput(e.target.value)}
                 placeholder="e.g. ash-echo-midnight-forest-river-4821"
                 className="w-full px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] text-[#e5e5e5] font-mono text-xs tracking-wide placeholder-[#525252] outline-none transition-colors text-center"
-                autoFocus
+                autoCapitalize="off"
+                autoComplete="off"
+                spellCheck={false}
               />
               {error && (
                 <p className="text-xs font-mono text-[#f87171] pt-1">
