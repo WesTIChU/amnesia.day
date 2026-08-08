@@ -46,6 +46,11 @@ export interface ArchiveData {
   memories: Memory[];
 }
 
+export interface ArchiveIntegrityStatus {
+  lastVerifiedAt: string | null;
+  archiveSizeBytes: number;
+}
+
 export interface MachineMetrics {
   loadAverage: number;
   ramUsedMb: number;

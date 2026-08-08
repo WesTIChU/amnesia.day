@@ -21,7 +21,8 @@ import {
   getPublicStats,
   getMachineMetrics,
   validateV2EncryptedMemory,
-  decodeBase64UrlOrNull
+  decodeBase64UrlOrNull,
+  getIntegrityStatus
 } from './db.js';
 
 const SESSION_COOKIE = 'amnesia_session';
@@ -316,6 +317,17 @@ export async function buildApp(): Promise<express.Express> {
       res.json(data);
     } catch (err: any) {
       res.status(500).json({ error: 'Error loading archive session.' });
+    }
+  });
+
+  // Live integrity/verification status. The modal polls this while it is open
+  // so "Last Verified" and "Archive Size" reflect the most recent Timekeeper
+  // run instead of a hardcoded value.
+  app.get('/api/archive/integrity', requireSession, (req, res) => {
+    try {
+      res.json(getIntegrityStatus(res.locals.archiveId));
+    } catch (err: any) {
+      res.status(500).json({ error: 'Error reading archive integrity status.' });
     }
   });
 

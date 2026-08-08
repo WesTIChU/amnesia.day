@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArchiveData, Memory } from '../types';
+import { ArchiveData, ArchiveIntegrityStatus, Memory } from '../types';
 import { AmnesiaLogo, AmnesiaText } from './AmnesiaLogo';
 import { ambientSound } from '../lib/audio';
 import { Footer } from './Footer';
@@ -9,6 +9,20 @@ import { LogOut, Volume2, VolumeX } from 'lucide-react';
 const getCsrfToken = () => {
   const cookie = document.cookie.split('; ').find((value) => value.startsWith('amnesia_csrf='));
   return cookie ? decodeURIComponent(cookie.slice('amnesia_csrf='.length)) : '';
+};
+
+const formatLastVerified = (iso: string | null): string => {
+  if (!iso) return 'Not yet run';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  const now = new Date();
+  const sameDay =
+    date.getUTCFullYear() === now.getUTCFullYear() &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate();
+  const time = date.toISOString().slice(11, 16);
+  if (sameDay) return `Today ${time} UTC`;
+  return `${date.toISOString().slice(0, 10)} ${time} UTC`;
 };
 
 const hydrateV2Memories = async (result: ArchiveData, memoryKey?: string): Promise<ArchiveData> => {
@@ -102,6 +116,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
   // Archive Integrity Modal State
   const [showIntegrityModal, setShowIntegrityModal] = useState(false);
+  const [integrityStatus, setIntegrityStatus] = useState<ArchiveIntegrityStatus | null>(null);
   const [isTimekeeperAwakening, setIsTimekeeperAwakening] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(() => ambientSound.getIsPlaying());
 
@@ -145,6 +160,29 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   }, []);
 
   useEffect(() => () => clearV2KeyCache(), []);
+
+  // While the Archive Integrity modal is open, poll the live status so the
+  // "Last Verified" and "Archive Size" fields auto-update (e.g. after the
+  // nightly Timekeeper run) instead of showing a static snapshot.
+  useEffect(() => {
+    if (!showIntegrityModal) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/archive/integrity');
+        if (!res.ok || cancelled) return;
+        setIntegrityStatus(await res.json());
+      } catch {
+        // Keep the last known values on transient errors.
+      }
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [showIntegrityModal]);
 
   const fetchArchive = async (signal?: AbortSignal) => {
     setLoading(true);
@@ -1077,14 +1115,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[#737373] text-[10px] uppercase">Last Verified</span>
-                  <span className="text-[#a3a3a3]">Today 03:00 UTC</span>
+                  <span className="text-[#a3a3a3]">
+                    {integrityStatus ? formatLastVerified(integrityStatus.lastVerifiedAt) : 'Verifying...'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[#737373] text-[10px] uppercase">Archive Size</span>
                   <span className="text-[#a3a3a3]">
-                    {stats.archiveSizeBytes
-                      ? `${(stats.archiveSizeBytes / 1024).toFixed(1)} KB`
-                      : '0 KB'}
+                    {(integrityStatus?.archiveSizeBytes ?? stats.archiveSizeBytes) ? `${((integrityStatus?.archiveSizeBytes ?? stats.archiveSizeBytes ?? 0) / 1024).toFixed(1)} KB` : '0 KB'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">

@@ -677,6 +677,22 @@ export function getMemoriesForArchiveSession(archiveId: number): ArchiveDataResp
   return getMemoriesForArchiveId(archiveId);
 }
 
+// Integrity/verification status for the logged-in archive. `lastVerifiedAt` is
+// the most recent Timekeeper maintenance run (recorded in timekeeper_logs);
+// `archiveSizeBytes` is the live sum of the archive's stored ciphertext.
+export function getIntegrityStatus(archiveId: number): { lastVerifiedAt: string | null; archiveSizeBytes: number } {
+  const logRow = db.prepare('SELECT MAX(run_at) as latest FROM timekeeper_logs').get() as { latest: string | null };
+  const memRows = db.prepare(
+    'SELECT ciphertext, encrypted_dek as encryptedDek, nonce, auth_tag as authTag FROM memories WHERE archive_id = ?'
+  ).all(archiveId) as Array<{ ciphertext: string | null; encryptedDek: string | null; nonce: string | null; authTag: string | null }>;
+  const archiveSizeBytes = memRows.reduce((total, row) => {
+    return total + [row.ciphertext, row.encryptedDek, row.nonce, row.authTag]
+      .filter(Boolean)
+      .reduce((size, value) => size + Buffer.byteLength(value as string), 0);
+  }, 0);
+  return { lastVerifiedAt: logRow.latest || null, archiveSizeBytes };
+}
+
 function getMemoriesForArchiveId(archiveId: number): ArchiveDataResponse | null {
   const archive = getArchiveByIdForSession(archiveId);
   if (!archive) return null;

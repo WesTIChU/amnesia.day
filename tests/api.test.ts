@@ -306,6 +306,34 @@ test('public telemetry endpoints stay reachable', async () => {
   assert.ok(typeof machine.memoriesCount === 'number');
 });
 
+test('archive integrity status is live and session-scoped', async () => {
+  const client = createClient(baseUrl);
+  const { key, archiveId, encryptionSalt } = await createArchive(client);
+  await sealMemory(client, key, archiveId, encryptionSalt, 'integrity payload');
+
+  const res = await client.request('/api/archive/integrity');
+  assert.equal(res.status, 200, 'integrity endpoint requires an active session and returns 200');
+  const integrity = await res.json();
+  assert.ok(Number.isFinite(integrity.archiveSizeBytes), 'archiveSizeBytes must be a number');
+  assert.ok(integrity.archiveSizeBytes > 0, 'a sealed memory must contribute to archive size');
+  assert.ok(
+    integrity.lastVerifiedAt === null || typeof integrity.lastVerifiedAt === 'string',
+    'lastVerifiedAt must be null or an ISO string',
+  );
+
+  // A Timekeeper run must advance the reported last-verified timestamp.
+  db.prepare('INSERT INTO timekeeper_logs (run_at, unlocked_count, details) VALUES (?, 0, ?)').run(
+    new Date().toISOString(),
+    'test run',
+  );
+  const after = await (await client.request('/api/archive/integrity')).json();
+  assert.ok(typeof after.lastVerifiedAt === 'string' && after.lastVerifiedAt.length > 0, 'Timekeeper run should set lastVerifiedAt');
+
+  // Unauthenticated requests must be rejected.
+  const anon = await createClient(baseUrl).request('/api/archive/integrity', { method: 'GET' });
+  assert.equal(anon.status, 401, 'integrity endpoint must require a session');
+});
+
 test('unlocked memories with a future or invalid unlock_at stay sealed', async () => {
   const client = createClient(baseUrl);
   const { key, archiveId, encryptionSalt } = await createArchive(client);
