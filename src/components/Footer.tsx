@@ -58,10 +58,11 @@ export const Footer: React.FC<FooterProps> = ({
           </a>
           <span className="text-white/10">•</span>
           <a
-            href="#"
-            onClick={(event) => event.preventDefault()}
+            href="https://github.com/WesTIChU/amnesia.day"
+            target="_blank"
+            rel="noopener noreferrer"
             className="hover:text-white transition-colors"
-            aria-label="GitHub repository link coming soon"
+            aria-label="Amnesia source code on GitHub"
           >
             GitHub
           </a>
@@ -73,14 +74,15 @@ export const Footer: React.FC<FooterProps> = ({
         {onNavigateMachine ? (
           <button
             onClick={onNavigateMachine}
-            className="hover:text-[#4A5D4E] transition-colors focus:outline-none cursor-pointer uppercase inline-flex flex-col items-center gap-2 group sm:flex-row sm:items-center"
+            className="hover:text-[#4A5D4E] transition-colors focus:outline-none cursor-pointer uppercase inline-flex flex-col items-center gap-2 group sm:flex-row sm:items-center sm:gap-3"
           >
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-[#4A5D4E] rounded-full"></span>
-              Running quietly on a Raspberry Pi Zero 2 WH • The Timekeeper
+              Running Quietly
             </span>
+            <span>Raspberry Pi Zero 2 W · Timekeeper Active</span>
             <span className="text-[#888888] font-mono sm:border-l sm:border-[#333333] sm:pl-2">
-              Load: {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} • Temp: {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
+              Load {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} · Temp {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
             </span>
           </button>
         ) : onGoHome ? (
@@ -94,7 +96,7 @@ export const Footer: React.FC<FooterProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-[#4A5D4E] rounded-full"></span>
             <span>
-              Load: {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} • Temp: {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
+              Load {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} · Temp {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
             </span>
           </div>
         )}
@@ -103,7 +105,11 @@ export const Footer: React.FC<FooterProps> = ({
 
       {/* Copyright stays at the bottom edge of the footer. */}
       <div className="w-full text-center uppercase tracking-widest text-[10px] text-[#777777]">
-        © {new Date().getFullYear()} AMNESIA.DAY • Encrypted & Confidential
+        <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-2">
+          <span>© {new Date().getFullYear()} AMNESIA.DAY</span>
+          <span className="hidden sm:inline text-white/10">•</span>
+          <span>Encrypted & Confidential</span>
+        </div>
       </div>
     </footer>
   );

@@ -235,10 +235,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           )}
           <span className="text-white/10">•</span>
           <a
-            href="#"
-            onClick={(event) => event.preventDefault()}
+            href="https://github.com/WesTIChU/amnesia.day"
+            target="_blank"
+            rel="noopener noreferrer"
             className="hover:text-white transition-colors"
-            aria-label="GitHub repository link coming soon"
+            aria-label="Amnesia source code on GitHub"
           >
             GitHub
           </a>
