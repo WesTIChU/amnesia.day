@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+# Runtime database and encryption secrets
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+master.key

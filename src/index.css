@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #080808;
+    color: #d1d5db;
+    font-family: 'EB Garamond', Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    content: '';
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.65'/%3E%3C/svg%3E");
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@keyframes home-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.home-logo,
+.home-tagline,
+.home-explainer,
+.home-actions,
+.home-details,
+.home-features {
+  opacity: 0;
+  animation: home-appear 700ms ease-out forwards;
+}
+
+.home-logo { animation-delay: 100ms; }
+.home-tagline { animation-delay: 800ms; }
+.home-explainer { animation-delay: 1050ms; }
+.home-actions { animation-delay: 1200ms; }
+.home-details { animation-delay: 1500ms; }
+.home-features { animation-delay: 1800ms; }
+
+@keyframes machine-led {
+  0%, 86%, 100% { opacity: 0.55; }
+  92% { opacity: 1; }
+}
+
+@keyframes amnesia-forget {
+  0%, 68%, 100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  78%, 88% {
+    opacity: 0.18;
+    filter: blur(3px);
+  }
+}
+
+.amnesia-detail {
+  animation: amnesia-forget 14s ease-in-out infinite;
+}
+
+.amnesia-detail:nth-of-type(3) { animation-delay: 2s; }
+.amnesia-detail:nth-of-type(5) { animation-delay: 4s; }
+
+.animate-machine-led {
+  animation: machine-led 4s ease-in-out infinite;
+}
+
+.print-only {
+  display: none;
+}
+
+.about-section {
+  padding: 1.5rem;
+  border: 1px solid #171717;
+  background: #000000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-logo,
+  .home-tagline,
+  .home-explainer,
+  .home-actions,
+  .home-details,
+  .home-features {
+    opacity: 1;
+    animation: none;
+  }
+
+  .animate-machine-led {
+    animation: none;
+  }
+
+  .amnesia-detail {
+    animation: none;
+  }
+}
+
+/* Print Styles for Memory Key Archive Card */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .printable-card {
+    border: 2px solid #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 2.5rem !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+  }
+
+  .printable-card * {
+    color: #000000 !important;
+  }
+
+  body::before {
+    display: none;
+  }
+}
