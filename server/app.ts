@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -116,9 +117,9 @@ export async function buildApp(): Promise<express.Express> {
             directives: {
               defaultSrc: ["'self'"],
               scriptSrc: ["'self'"],
-              styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+              styleSrc: ["'self'"],
               styleSrcAttr: ["'unsafe-inline'"],
-              fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+              fontSrc: ["'self'", 'data:'],
               imgSrc: ["'self'", 'data:'],
               connectSrc: ["'self'"],
               objectSrc: ["'none'"],
@@ -207,7 +208,7 @@ export async function buildApp(): Promise<express.Express> {
     message: { error: 'Too many requests. Please try again later.' }
   });
 
-  const requireSession = (req: any, res: any, next: any) => {
+  const requireSession = (req: Request, res: Response, next: NextFunction) => {
     const sessionToken = getCookie(req, SESSION_COOKIE);
     const session = sessionToken ? getSession(sessionToken) : null;
     if (!session || !sessionToken) {
@@ -218,7 +219,7 @@ export async function buildApp(): Promise<express.Express> {
     next();
   };
 
-  const requireCsrf = (req: any, res: any, next: any) => {
+  const requireCsrf = (req: Request, res: Response, next: NextFunction) => {
     const csrfToken = req.get('X-CSRF-Token');
     if (!csrfToken || !verifySessionCsrf(res.locals.sessionToken, csrfToken)) {
       return res.status(403).json({ error: 'CSRF validation failed.' });
@@ -232,7 +233,7 @@ export async function buildApp(): Promise<express.Express> {
   app.get('/api/stats', telemetryLimiter, (req, res) => {
     try {
       res.json(withTelemetryCache(statsCache, () => getPublicStats()));
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Failed to retrieve stats' });
     }
   });
@@ -265,7 +266,7 @@ export async function buildApp(): Promise<express.Express> {
       if (!session) return res.status(500).json({ error: 'Could not establish archive session.' });
       setSessionCookies(res, session.sessionToken, session.csrfToken, isProduction);
       res.json({ archiveId: archive.archiveId, createdAt: archive.createdAt, encryptionSalt: archive.encryptionSalt });
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Could not create memory archive. Please try again.' });
     }
   });
@@ -305,7 +306,7 @@ export async function buildApp(): Promise<express.Express> {
       if (!data) return res.status(404).json({ error: 'No archive found matching this Memory Key.' });
       setSessionCookies(res, session.sessionToken, session.csrfToken, isProduction);
       res.json(data);
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Error opening archive.' });
     }
   });
@@ -315,7 +316,7 @@ export async function buildApp(): Promise<express.Express> {
       const data = getMemoriesForArchiveSession(res.locals.archiveId);
       if (!data) return res.status(404).json({ error: 'Archive session is no longer valid.' });
       res.json(data);
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Error loading archive session.' });
     }
   });
@@ -326,7 +327,7 @@ export async function buildApp(): Promise<express.Express> {
   app.get('/api/archive/integrity', requireSession, (req, res) => {
     try {
       res.json(getIntegrityStatus(res.locals.archiveId));
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Error reading archive integrity status.' });
     }
   });
@@ -352,7 +353,7 @@ export async function buildApp(): Promise<express.Express> {
         return res.status(result.code === 'daily-limit' ? 409 : 400).json({ error: result.message });
       }
       return res.json(result);
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Failed to archive memory.' });
     }
   });
@@ -373,7 +374,7 @@ export async function buildApp(): Promise<express.Express> {
       }
 
       res.json(result);
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Failed to record memory read.' });
     }
   });
@@ -394,7 +395,7 @@ export async function buildApp(): Promise<express.Express> {
       destroySessionsForArchive(archiveId);
       clearSessionCookies(res, isProduction);
       res.json({ message: 'Archive permanently erased. Memory Key retired.' });
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Failed to delete archive.' });
     }
   });
@@ -402,7 +403,7 @@ export async function buildApp(): Promise<express.Express> {
   app.get('/api/machine', telemetryLimiter, (req, res) => {
     try {
       res.json(withTelemetryCache(machineCache, () => getMachineMetrics()));
-    } catch (err: any) {
+    } catch {
       res.status(500).json({ error: 'Failed to fetch machine telemetry.' });
     }
   });

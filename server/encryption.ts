@@ -42,7 +42,6 @@ export function getMasterKey(): Buffer {
     }
   }
 
-  // Generate a new 256-bit (32 bytes) Master Key
   const newKey = crypto.randomBytes(32);
   try {
     fs.writeFileSync(MASTER_KEY_PATH, newKey, { mode: 0o600 });
@@ -53,7 +52,9 @@ export function getMasterKey(): Buffer {
     fs.writeFileSync(fallbackPath, newKey, { mode: 0o600 });
     try {
       fs.chmodSync(fallbackPath, 0o600);
-    } catch {}
+    } catch {
+      // chmod on the fallback path is best-effort; the key file is still written.
+    }
   }
 
   cachedMasterKey = newKey;
@@ -144,14 +145,12 @@ export function encryptMemoryEnvelope(plaintext: string): EncryptedEnvelope {
   const dek = crypto.randomBytes(32);
   const masterKey = getMasterKey();
 
-  // 1. Encrypt content with DEK
   const contentIv = crypto.randomBytes(12);
   const contentCipher = crypto.createCipheriv('aes-256-gcm', dek, contentIv);
   let ciphertext = contentCipher.update(plaintext, 'utf8', 'hex');
   ciphertext += contentCipher.final('hex');
   const contentAuthTag = contentCipher.getAuthTag();
 
-  // 2. Encrypt DEK with Master Key
   const dekIv = crypto.randomBytes(12);
   const dekCipher = crypto.createCipheriv('aes-256-gcm', masterKey, dekIv);
   let encryptedDekHex = dekCipher.update(dek, null, 'hex');
@@ -181,7 +180,6 @@ export function decryptMemoryEnvelope(envelope: EncryptedEnvelope): string {
       throw new Error('Invalid encrypted DEK structure');
     }
 
-    // 1. Decrypt DEK using Master Key
     const dekIv = Buffer.from(dekIvHex, 'hex');
     const dekAuthTag = Buffer.from(dekAuthTagHex, 'hex');
     const dekDecipher = crypto.createDecipheriv('aes-256-gcm', masterKey, dekIv);
@@ -191,7 +189,6 @@ export function decryptMemoryEnvelope(envelope: EncryptedEnvelope): string {
       dekDecipher.final(),
     ]);
 
-    // 2. Decrypt content using DEK
     const contentIv = Buffer.from(envelope.nonce, 'hex');
     const contentAuthTag = Buffer.from(envelope.authTag, 'hex');
     const contentDecipher = crypto.createDecipheriv('aes-256-gcm', dek, contentIv);
@@ -205,7 +202,6 @@ export function decryptMemoryEnvelope(envelope: EncryptedEnvelope): string {
   }
 }
 
-// Self-test execution to verify cryptosystem integrity
 export function runEncryptionSelfTest(): boolean {
   try {
     const secret = 'Amnesia E2E Envelope Encryption Verification Test String 2026';
@@ -221,5 +217,4 @@ export function runEncryptionSelfTest(): boolean {
   }
 }
 
-// Execute self-test on module load
 runEncryptionSelfTest();

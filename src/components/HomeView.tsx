@@ -116,12 +116,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
             Forget today. Remember next year.
           </p>
           <p className="text-sm font-mono text-[#A0A0A0] tracking-widest uppercase">
-            Leave something behind • Read it in 365 days
+            Leave something behind • Read it in one year
           </p>
         </div>
 
         <p className="home-explainer max-w-md mb-8 text-sm sm:text-base font-serif italic text-[#858585] leading-relaxed">
-          Write a memory. Seal it for 365 days. Only you can open it when it awakens.
+          Write a memory. Seal it for one year. Only you can open it when it awakens.
         </p>
 
         {/* Action Buttons */}
@@ -141,11 +141,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
         </div>
 
-        {/* Free, Quick & Zero Personal Data Notice */}
+        {/* Free, Quick & No Personal Profile Notice */}
         <div className="home-details mb-12 text-[10px] sm:text-[11px] font-mono text-[#737373] tracking-widest uppercase flex flex-wrap justify-center items-center gap-2">
           <span className="amnesia-detail">Takes ~5 seconds</span>
           <span className="text-white/20">•</span>
-          <span className="amnesia-detail">Zero personal data</span>
+          <span className="amnesia-detail">No personal profile</span>
           <span className="text-white/20">•</span>
           <span className="amnesia-detail">Free &amp; Encrypted</span>
         </div>

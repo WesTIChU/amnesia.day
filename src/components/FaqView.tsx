@@ -1,8 +1,8 @@
 import React from 'react';
-import { Footer } from './Footer';
-import { AmnesiaLogo } from './AmnesiaLogo';
+import { PageShell } from './PageShell';
 
 interface FaqViewProps {
+  isLoggedIn: boolean;
   onGoHome: () => void;
   onNavigateTerms?: () => void;
   onNavigatePrivacy?: () => void;
@@ -17,6 +17,10 @@ const questions = [
   {
     question: 'Can Amnesia read my memories?',
     answer: 'No. Memories are encrypted before they leave your browser. Your Recovery Phrase is required to decrypt them, and it is never stored by the server.',
+  },
+  {
+    question: 'Why is there no Amnesia app?',
+    answer: 'The browser already provides everything the archive needs - encryption, storage of your Recovery Phrase, and a place to read your memories - so a separate app would mainly add another distribution and update channel to maintain. Amnesia stays a small website on purpose, and the site itself contains no advertising or analytics SDKs.',
   },
   {
     question: 'Is Amnesia really free?',
@@ -36,56 +40,45 @@ const questions = [
   },
   {
     question: 'When will a memory awaken?',
-    answer: 'One calendar year after it was sealed. The Amnesia server holds the material needed to decrypt the memory and releases it when its anniversary arrives; a background Timekeeper process marks due memories as released. The archive may show a short delay while that process runs. This release is enforced by the server and controls the normal archive interface - anyone who knows your Recovery Phrase could read a copy of the words kept on their own device at any time.',
+    answer: 'The same UTC date and time one calendar year after it was sealed. The Amnesia server holds the material needed to decrypt the memory and releases it when that time arrives; a background Timekeeper process marks due memories as released, so availability begins after its next run. The archive may show a short delay while that process runs, and a leap-year interval may span 366 days. This release is enforced by the server and controls the normal archive interface - anyone who knows your Recovery Phrase could read a copy of the words kept on their own device at any time.',
   },
   {
     question: 'What happens if I lose my Recovery Phrase?',
-    answer: 'The archive cannot be recovered. Amnesia has no password reset, email recovery, or master key. Keep the phrase somewhere safe.',
+    answer: 'A V2 archive cannot be recovered without your Recovery Phrase: there is no password reset or recovery bypass that can reconstruct it. Legacy V1 Vault Keys, however, remain decryptable by a server-held master key. Keep the phrase somewhere safe.',
   },
   {
     question: 'Can I delete this archive?',
-    answer: 'Yes. Deleting is permanent and destroys every memory in this archive. The Recovery Phrase is retired and cannot be used again.',
+    answer: 'Yes. Deleting removes the archive and its memories from the live database, and retires the Recovery Phrase so it cannot be reused. Encrypted remnants may persist temporarily in SQLite storage or backups until overwritten or expired.',
   },
 ];
 
 export const FaqView: React.FC<FaqViewProps> = ({
+  isLoggedIn,
   onGoHome,
   onNavigateTerms,
   onNavigatePrivacy,
   onNavigateAbout,
 }) => (
-  <div className="min-h-screen bg-[#080808] text-[#e5e5e5] px-4 py-12 flex flex-col items-center justify-between font-mono">
-    <div className="max-w-2xl w-full space-y-10">
-      <header className="flex flex-col items-center text-center space-y-4">
-        <AmnesiaLogo size="small" />
-        <div className="h-[1px] w-12 bg-[#4A5D4E] my-2"></div>
-        <h1 className="text-xl font-light tracking-[0.2em] text-white uppercase font-serif">
-          Archive Questions
-        </h1>
-        <p className="text-xs text-[#737373] tracking-widest uppercase">
-          How the archive works
-        </p>
-      </header>
-
-      <main className="border-t border-b border-[#1f1f1f] divide-y divide-[#1f1f1f]">
-        {questions.map(({ question, answer }) => (
-          <details key={question} className="group py-5">
-            <summary className="cursor-pointer list-none text-xs uppercase tracking-wider text-[#a3a3a3] transition-colors group-open:text-[#e5e5e5]">
-              {question}
-            </summary>
-            <p className="pt-3 max-w-xl text-xs text-[#737373] leading-relaxed normal-case tracking-normal">
-              {answer}
-            </p>
-          </details>
-        ))}
-      </main>
-
-      <Footer
-        onGoHome={onGoHome}
-        onNavigateTerms={onNavigateTerms}
-        onNavigatePrivacy={onNavigatePrivacy}
-        onNavigateAbout={onNavigateAbout}
-      />
-    </div>
-  </div>
+  <PageShell
+    title="Archive Questions"
+    subtitle="How the archive works"
+    isLoggedIn={isLoggedIn}
+    onGoHome={onGoHome}
+    onNavigateTerms={onNavigateTerms}
+    onNavigatePrivacy={onNavigatePrivacy}
+    onNavigateAbout={onNavigateAbout}
+  >
+    <main className="divide-y divide-[#262626]">
+      {questions.map(({ question, answer }) => (
+        <details key={question} className="group py-5">
+          <summary className="cursor-pointer list-none text-xs uppercase tracking-wider text-[#a3a3a3] transition-colors group-open:text-[#e5e5e5]">
+            {question}
+          </summary>
+          <p className="pt-3 max-w-xl text-xs text-[#737373] leading-relaxed normal-case tracking-normal font-serif">
+            {answer}
+          </p>
+        </details>
+      ))}
+    </main>
+  </PageShell>
 );

@@ -133,7 +133,9 @@ class AmbientSoundEngine {
 
       osc.start(this.ctx.currentTime);
       osc.stop(this.ctx.currentTime + 0.015);
-    } catch (e) {}
+    } catch {
+      // Decorative audio only; a playback failure must never interrupt the page.
+    }
   }
 
   // Soft page turning / paper rustle
@@ -166,7 +168,9 @@ class AmbientSoundEngine {
       gain.connect(this.gainNode);
 
       noise.start();
-    } catch (e) {}
+    } catch {
+      // Decorative audio only; a playback failure must never interrupt the page.
+    }
   }
 
   // Soft floor creak
@@ -188,7 +192,9 @@ class AmbientSoundEngine {
 
       osc.start(this.ctx.currentTime);
       osc.stop(this.ctx.currentTime + 0.2);
-    } catch (e) {}
+    } catch {
+      // Decorative audio only; a playback failure must never interrupt the page.
+    }
   }
 
   // Quiet sound of paper envelope opening ("shhh...") for awakened memory opening
@@ -249,13 +255,17 @@ class AmbientSoundEngine {
     if (this.humOsc) {
       try {
         this.humOsc.stop();
-      } catch (e) {}
+      } catch {
+        // The node may already be stopped; halting is best-effort.
+      }
       this.humOsc = null;
     }
     if (this.noiseNode) {
       try {
         (this.noiseNode as any).stop();
-      } catch (e) {}
+      } catch {
+        // The node may already be stopped; halting is best-effort.
+      }
       this.noiseNode = null;
     }
     if (this.ctx) {

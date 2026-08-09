@@ -24,20 +24,26 @@ function getStoredSession(): { activeKey: string; keyCreatedAt: string } {
         };
       }
     }
-  } catch {}
+  } catch {
+    // sessionStorage may be unavailable in private browsing; the session is not restored.
+  }
   return { activeKey: '', keyCreatedAt: '' };
 }
 
 function persistSession(activeKey: string, keyCreatedAt: string): void {
   try {
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ activeKey, keyCreatedAt }));
-  } catch {}
+  } catch {
+    // sessionStorage may be unavailable in private browsing; the session is not persisted.
+  }
 }
 
 function clearStoredSession(): void {
   try {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
-  } catch {}
+  } catch {
+    // sessionStorage may be unavailable in private browsing; nothing to clear.
+  }
 }
 
 export default function App() {
@@ -87,7 +93,7 @@ export default function App() {
     const metadata: Record<string, { title: string; description: string }> = {
       '/': {
         title: 'Amnesia | Private One-Year Memory Archive',
-        description: 'Amnesia is a private one-year memory archive. Write a memory, encrypt it in your browser, and return when it awakens 365 days later.',
+        description: 'Amnesia is a private one-year memory archive. Write a memory, encrypt it in your browser, and return when it awakens one year later.',
       },
       '/about': {
         title: 'About Amnesia | A One-Year Memory Archive',
@@ -273,6 +279,7 @@ export default function App() {
 
       {currentView === 'terms' && (
         <TermsView
+          isLoggedIn={Boolean(activeKey)}
           onGoHome={handleGoHome}
           onNavigateTerms={handleNavigateTerms}
           onNavigatePrivacy={handleNavigatePrivacy}
@@ -282,6 +289,7 @@ export default function App() {
 
       {currentView === 'privacy' && (
         <PrivacyView
+          isLoggedIn={Boolean(activeKey)}
           onGoHome={handleGoHome}
           onNavigateTerms={handleNavigateTerms}
           onNavigatePrivacy={handleNavigatePrivacy}
@@ -291,6 +299,7 @@ export default function App() {
 
       {currentView === 'about' && (
         <AboutView
+          isLoggedIn={Boolean(activeKey)}
           onGoHome={handleGoHome}
           onNavigateTerms={handleNavigateTerms}
           onNavigatePrivacy={handleNavigatePrivacy}
@@ -300,6 +309,7 @@ export default function App() {
 
       {currentView === 'faq' && (
         <FaqView
+          isLoggedIn={Boolean(activeKey)}
           onGoHome={handleGoHome}
           onNavigateTerms={handleNavigateTerms}
           onNavigatePrivacy={handleNavigatePrivacy}

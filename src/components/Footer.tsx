@@ -80,7 +80,7 @@ export const Footer: React.FC<FooterProps> = ({
               <span className="w-1.5 h-1.5 bg-[#4A5D4E] rounded-full"></span>
               Running Quietly
             </span>
-            <span>Raspberry Pi Zero 2 W · Timekeeper Active</span>
+            <span>Raspberry Pi Zero 2 WH · Timekeeper Active</span>
             <span className="text-[#888888] font-mono sm:border-l sm:border-[#333333] sm:pl-2">
               Load {metrics?.loadAverage.toFixed(2) ?? 'Unavailable'} · Temp {metrics?.tempCelsius == null ? 'Unavailable' : `${metrics.tempCelsius}°C`}
             </span>

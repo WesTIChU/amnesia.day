@@ -1,47 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { ArchiveData, ArchiveIntegrityStatus, Memory } from '../types';
-import { AmnesiaLogo, AmnesiaText } from './AmnesiaLogo';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArchiveData, ArchiveIntegrityStatus } from '../types';
 import { ambientSound } from '../lib/audio';
+import { encryptV2Memory } from '../lib/crypto';
+import { getCsrfToken } from '../lib/http';
 import { Footer } from './Footer';
-import { buildV2TimekeeperAad, clearV2KeyCache, decryptV2Memory, decryptV2TimekeeperLayer, encryptV2Memory } from '../lib/crypto';
-import { LogOut, Volume2, VolumeX } from 'lucide-react';
-
-const getCsrfToken = () => {
-  const cookie = document.cookie.split('; ').find((value) => value.startsWith('amnesia_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('amnesia_csrf='.length)) : '';
-};
-
-const formatLastVerified = (iso: string | null): string => {
-  if (!iso) return 'Not yet run';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'Unknown';
-  const now = new Date();
-  const sameDay =
-    date.getUTCFullYear() === now.getUTCFullYear() &&
-    date.getUTCMonth() === now.getUTCMonth() &&
-    date.getUTCDate() === now.getUTCDate();
-  const time = date.toISOString().slice(11, 16);
-  if (sameDay) return `Today ${time} UTC`;
-  return `${date.toISOString().slice(0, 10)} ${time} UTC`;
-};
-
-const hydrateV2Memories = async (result: ArchiveData, memoryKey?: string): Promise<ArchiveData> => {
-  if (result.archive.archiveVersion !== 2 || !memoryKey || !result.archive.encryptionSalt) return result;
-  const memories = await Promise.all(result.memories.map(async (memory) => {
-    if (!memory.unlockMaterial) return memory;
-    try {
-      const inner = await decryptV2TimekeeperLayer(
-        memory.unlockMaterial,
-        buildV2TimekeeperAad(result.archive.id, memory.memoryId!, memory.unlockAt),
-      );
-      const content = await decryptV2Memory(memoryKey, result.archive.encryptionSalt!, inner, result.archive.id);
-      return { ...memory, content, unlockMaterial: undefined };
-    } catch {
-      return { ...memory, unlockMaterial: undefined };
-    }
-  }));
-  return { ...result, memories };
-};
+import { useArchive } from '../hooks/useArchive';
+import { useArchiveDraft } from '../hooks/useArchiveDraft';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { ArchiveHeader } from './archive/ArchiveHeader';
+import { ArchiveIndex } from './archive/ArchiveIndex';
+import { MemoryComposer } from './archive/MemoryComposer';
+import { MemoryKeyModal } from './archive/MemoryKeyModal';
+import { ReviewModal } from './archive/ReviewModal';
+import { DeleteArchiveModal } from './archive/DeleteArchiveModal';
+import { IntegrityModal } from './archive/IntegrityModal';
 
 interface ArchiveViewProps {
   memoryKey?: string;
@@ -70,96 +42,54 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   const recoveryGroups = Array.from({ length: Math.ceil(recoveryParts.length / 2) }, (_, index) =>
     recoveryParts.slice(index * 2, index * 2 + 2).join('-'),
   );
-  const [data, setData] = useState<ArchiveData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
-  // Key Modal state
+  const {
+    data,
+    loading,
+    error,
+    fetchArchive,
+    readingMemory,
+    setReadingMemory,
+    openedMemoryIds,
+    confirmRitualOpen,
+    currentTime,
+    isTimekeeperAwakening,
+  } = useArchive({ memoryKey, onSessionExpired });
+
+  const { memoryText, hasDraftPrompt, handleTextChange, continueDraft, clearDraft } = useArchiveDraft(data?.archive.id);
+
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
-
-  // Reunion Screen state
   const [showReunion, setShowReunion] = useState(true);
-
-  // Draft & Memory creation state
-  // Drafts live only in sessionStorage (cleared when the tab closes) and are
-  // namespaced by archive ID so opening another archive never reveals a
-  // different archive's draft.
-  const draftStorageKey = (archiveId?: number) => (archiveId ? `amnesia_draft_${archiveId}` : 'amnesia_draft');
-  const [memoryText, setMemoryText] = useState('');
-  const [hasDraftPrompt, setHasDraftPrompt] = useState(false);
-  const [foundDraftText, setFoundDraftText] = useState('');
-
-  // Review Modal state
   const [showReviewModal, setShowReviewModal] = useState(false);
-
-  // Sealing Ceremony & submitting state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [isSealingSequence, setIsSealingSequence] = useState(false);
   const [sealingUnlockDate, setSealingUnlockDate] = useState('');
   const [sealingProgress, setSealingProgress] = useState(0);
-
-  // Dedicated Memory Reading View state
-  const [readingMemory, setReadingMemory] = useState<Memory | null>(null);
-
-  // Opened Memory Ritual state (IDs unlocked in this session)
-  const [openedMemoryIds, setOpenedMemoryIds] = useState<number[]>([]);
-  const [ritualActiveId, setRitualActiveId] = useState<number | null>(null);
-
-  // Delete Archive Modal State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [confirmKeyInput, setConfirmKeyInput] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Archive Integrity Modal State
   const [showIntegrityModal, setShowIntegrityModal] = useState(false);
   const [integrityStatus, setIntegrityStatus] = useState<ArchiveIntegrityStatus | null>(null);
-  const [isTimekeeperAwakening, setIsTimekeeperAwakening] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(() => ambientSound.getIsPlaying());
 
-  // Lock body scroll while any overlay modal is open so the page behind never
-  // pans or shifts (e.g. when the mobile keyboard opens on a focused input).
+  const sealingTimersRef = useRef<number[]>([]);
+
+  const clearSealingTimers = () => {
+    sealingTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    sealingTimersRef.current = [];
+  };
+
+  // Clear any in-flight sealing timers when ArchiveView unmounts so a cleared
+  // timer can never update state or call fetchArchive after unmount.
+  useEffect(() => {
+    return () => clearSealingTimers();
+  }, []);
+
   const isAnyModalOpen = showKeyModal || showReviewModal || showDeleteModal || showIntegrityModal;
-  useEffect(() => {
-    if (!isAnyModalOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isAnyModalOpen]);
-
-  const toggleAmbience = () => {
-    setIsAudioPlaying(ambientSound.toggle());
-  };
-
-  const checkTimekeeper = () => {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).formatToParts(new Date());
-    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-    setIsTimekeeperAwakening(values.hour === '00' && values.minute === '00' && Number(values.second) < 10);
-  };
-
-  useEffect(() => {
-    checkTimekeeper();
-    const interval = window.setInterval(checkTimekeeper, 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => () => clearV2KeyCache(), []);
+  useBodyScrollLock(isAnyModalOpen);
 
   // While the Archive Integrity modal is open, poll the live status so the
   // "Last Verified" and "Archive Size" fields auto-update (e.g. after the
@@ -184,87 +114,27 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
     };
   }, [showIntegrityModal]);
 
-  const fetchArchive = async (signal?: AbortSignal) => {
-    setLoading(true);
-    setError('');
+  const toggleAmbience = () => {
+    setIsAudioPlaying(ambientSound.toggle());
+  };
+
+  const handleCopyKey = () => {
+    if (!memoryKey) return;
+    navigator.clipboard.writeText(memoryKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  const handleCloseSession = async () => {
     try {
-      const res = await fetch('/api/archive/session', {
-        signal
+      await fetch('/api/archive/logout', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
       });
-      const result = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          clearV2KeyCache();
-          onSessionExpired?.();
-        }
-        setError(result.error || 'Failed to access memory archive.');
-      } else {
-        setData(await hydrateV2Memories(result, memoryKey));
-      }
-    } catch (err) {
-      if ((err as DOMException).name !== 'AbortError') {
-        setError('Connection error while fetching archive.');
-      }
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      clearDraft();
+      onSessionClosed ? onSessionClosed() : onGoHome();
     }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchArchive(controller.signal);
-
-    return () => controller.abort();
-  }, [memoryKey]);
-
-  // Restore any draft saved for this archive only. Because drafts are
-  // namespaced by archive ID, they never leak between archives.
-  useEffect(() => {
-    const archiveId = data?.archive.id;
-    if (!archiveId) return;
-    try {
-      const savedDraft = sessionStorage.getItem(draftStorageKey(archiveId));
-      if (savedDraft && savedDraft.trim().length > 0) {
-        setFoundDraftText(savedDraft);
-        setHasDraftPrompt(true);
-      }
-    } catch (e) {}
-  }, [data?.archive.id]);
-
-  const clearCurrentDraft = () => {
-    const archiveId = data?.archive.id;
-    try {
-      sessionStorage.removeItem(draftStorageKey(archiveId));
-    } catch (e) {}
-    setMemoryText('');
-    setFoundDraftText('');
-    setHasDraftPrompt(false);
-  };
-
-  // Handle local text change & auto-save draft
-  const handleTextChange = (value: string) => {
-    const sliced = value.slice(0, 2000);
-    setMemoryText(sliced);
-
-    const archiveId = data?.archive.id;
-    if (!archiveId) return;
-
-    try {
-      if (sliced.trim().length > 0) {
-        sessionStorage.setItem(draftStorageKey(archiveId), sliced);
-      } else {
-        sessionStorage.removeItem(draftStorageKey(archiveId));
-      }
-    } catch (e) {}
-  };
-
-  const handleContinueDraft = () => {
-    setMemoryText(foundDraftText);
-    setHasDraftPrompt(false);
-  };
-
-  const handleDiscardDraft = () => {
-    clearCurrentDraft();
   };
 
   const handleStartReview = (e: React.FormEvent) => {
@@ -302,8 +172,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         setIsSubmitting(false);
         setShowReviewModal(false);
       } else {
-        // Clear local draft only after the archive has confirmed the write.
-        clearCurrentDraft();
+        clearDraft();
 
         const unlockFormatted = new Date(result.unlockAt).toLocaleDateString('en-GB', {
           day: 'numeric',
@@ -312,32 +181,28 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         });
 
         setShowReviewModal(false);
-
-        // Trigger Sealing Ceremony
         setSealingUnlockDate(unlockFormatted);
         setIsSealingSequence(true);
         setSealingProgress(10);
 
-        // Progress bar simulation
-        const p1 = setTimeout(() => setSealingProgress(45), 400);
-        const p2 = setTimeout(() => setSealingProgress(85), 900);
-        const p3 = setTimeout(() => setSealingProgress(100), 1400);
+        // Clear any existing sealing timers before starting a new sequence so a
+        // stale timer cannot advance progress, close the sequence, or refetch
+        // after a fresh seal.
+        clearSealingTimers();
 
-        const done = setTimeout(() => {
+        const p1 = window.setTimeout(() => setSealingProgress(45), 400);
+        const p2 = window.setTimeout(() => setSealingProgress(85), 900);
+        const p3 = window.setTimeout(() => setSealingProgress(100), 1400);
+
+        const done = window.setTimeout(() => {
           setIsSealingSequence(false);
-          setMemoryText('');
           setIsSubmitting(false);
           fetchArchive();
         }, 2800);
 
-        return () => {
-          clearTimeout(p1);
-          clearTimeout(p2);
-          clearTimeout(p3);
-          clearTimeout(done);
-        };
+        sealingTimersRef.current = [p1, p2, p3, done];
       }
-    } catch (err) {
+    } catch {
       setSubmitError('Error reaching archive server.');
       setIsSubmitting(false);
       setShowReviewModal(false);
@@ -366,31 +231,12 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         setDeleteError(result.error || 'Failed to delete archive.');
         setIsDeleting(false);
       } else {
-        clearCurrentDraft();
+        clearDraft();
         onSessionClosed ? onSessionClosed() : onGoHome();
       }
-    } catch (err) {
+    } catch {
       setDeleteError('Error processing deletion.');
       setIsDeleting(false);
-    }
-  };
-
-  const handleCopyKey = () => {
-    if (!memoryKey) return;
-    navigator.clipboard.writeText(memoryKey);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
-
-  const handleCloseSession = async () => {
-    try {
-      await fetch('/api/archive/logout', {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': getCsrfToken() },
-      });
-    } finally {
-      clearCurrentDraft();
-      onSessionClosed ? onSessionClosed() : onGoHome();
     }
   };
 
@@ -410,55 +256,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
 
   const formatStampId = (id: number) => {
     return `#${id.toString().padStart(6, '0')}`;
-  };
-
-  const calculateDaysLeft = (unlockIso: string) => {
-    const unlockDate = new Date(unlockIso);
-    const today = new Date(currentTime);
-    const utcDay = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-    const calendarDays = Math.floor((utcDay(unlockDate) - utcDay(today)) / (1000 * 60 * 60 * 24));
-
-    // Keep a future unlock on the current calendar day readable until it opens.
-    if (calendarDays === 0 && unlockDate.getTime() > currentTime) return 1;
-    return Math.max(0, calendarDays);
-  };
-
-  const handleTriggerRitual = (id: number) => {
-    setRitualActiveId(id);
-  };
-
-  const handleConfirmRitualOpen = async (id: number) => {
-    try {
-      ambientSound.playPaperEnvelopeOpen();
-    } catch (e) {}
-
-    if (!openedMemoryIds.includes(id)) {
-      setOpenedMemoryIds((prev) => [...prev, id]);
-    }
-
-    try {
-      const res = await fetch('/api/archive/memory/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-        body: JSON.stringify({ memoryId: id })
-      });
-      const resData = await res.json();
-      if (res.ok && resData.firstReadAt && data) {
-        setData({
-          ...data,
-          memories: data.memories.map((m) =>
-            m.id === id ? { ...m, firstReadAt: resData.firstReadAt, readCount: resData.readCount } : m
-          )
-        });
-        setReadingMemory((prev) =>
-          prev && prev.id === id
-            ? { ...prev, firstReadAt: resData.firstReadAt, readCount: resData.readCount }
-            : prev
-        );
-      }
-    } catch (e) {}
-
-    setRitualActiveId(null);
   };
 
   if (loading) {
@@ -492,7 +289,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   const daysSinceLast = archive.daysSinceLastVisit ?? 1;
   const awakenedCount = stats.openedMemories ?? 0;
 
-  // 1. REUNION OVERLAY SCREEN
+  // REUNION OVERLAY
   if (showReunion && daysSinceLast > 0) {
     return (
       <div className="min-h-screen bg-[#080808] text-[#D1D1D1] flex flex-col items-center justify-center p-6 text-center font-serif animate-fade-in">
@@ -526,7 +323,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
     );
   }
 
-  // 2. SEALING CEREMONY OVERLAY
+  // SEALING CEREMONY OVERLAY
   if (isSealingSequence) {
     return (
       <div className="min-h-screen bg-[#080808] text-[#D1D1D1] flex flex-col items-center justify-center p-6 text-center font-serif animate-fade-in">
@@ -540,7 +337,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
             </p>
           </div>
 
-          {/* Progress Bar Visual */}
           <div className="w-full bg-[#080808] border border-[#262626] h-2 rounded-full overflow-hidden p-0.5">
             <div
               className="bg-[#4A5D4E] h-full transition-all duration-500 ease-out"
@@ -561,146 +357,30 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
     );
   }
 
-  // 3. FULL SCREEN AWAKENED MEMORY RITUAL OVERLAY
-  if (ritualActiveId !== null) {
-    return (
-      <div className="min-h-screen bg-[#080808] text-[#D1D1D1] flex flex-col items-center justify-center p-6 text-center font-serif animate-fade-in">
-        <div className="max-w-md w-full bg-[#111111] border border-[#262626] p-8 sm:p-12 space-y-8 shadow-2xl">
-          <div className="space-y-3">
-            <h2 className="text-2xl sm:text-3xl font-light text-white uppercase tracking-[0.15em]">
-              One memory has awakened.
-            </h2>
-            <div className="h-[1px] w-10 bg-[#4A5D4E] mx-auto mt-4"></div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-lg font-serif italic text-[#a0a0a0]">
-              It has waited
-            </p>
-            <p className="text-2xl font-mono text-[#4A5D4E] font-light tracking-wider uppercase">
-              One Year
-            </p>
-            <p className="text-lg font-serif italic text-[#a0a0a0]">
-              to be read.
-            </p>
-          </div>
-
-          <button
-            onClick={() => handleConfirmRitualOpen(ritualActiveId)}
-            className="w-full py-4 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] font-mono text-xs uppercase tracking-[0.2em] transition-colors cursor-pointer shadow-lg"
-          >
-            Open Memory
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // 4. MAIN ARCHIVE VIEW
   return (
     <div className="min-h-screen bg-[#080808] text-[#D1D1D1] p-6 sm:p-12 lg:p-16 max-w-4xl mx-auto space-y-12 font-serif animate-fade-in">
-      {/* Top Header */}
-      <div className="relative border-b border-[#262626] pb-6 font-mono text-xs text-[#737373]">
-        {/* Desktop: logo centered in the same row */}
-        <div className="hidden sm:block absolute left-1/2 -translate-x-1/2">
-          <AmnesiaLogo size="small" />
-        </div>
+      <ArchiveHeader
+        isAudioPlaying={isAudioPlaying}
+        onToggleAmbience={toggleAmbience}
+        onGoHome={onGoHome}
+        onShowKey={() => setShowKeyModal(true)}
+        onCloseSession={handleCloseSession}
+      />
 
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between sm:items-center">
-          {/* Mobile: logo on its own centered row */}
-          <div className="sm:hidden">
-            <AmnesiaLogo size="small" />
-          </div>
-
-          <div className="flex items-center justify-between w-full sm:w-full gap-3">
-            <button
-              onClick={onGoHome}
-              className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest"
-            >
-              ← Return Home
-            </button>
-
-            <div className="ml-auto flex items-center gap-3">
-              <button
-                onClick={() => setShowKeyModal(true)}
-                className="text-[#a3a3a3] hover:text-[#e5e5e5] transition-colors cursor-pointer uppercase tracking-widest px-3 py-1"
-              >
-                <AmnesiaText text="Memory Key" autoAnimate={false} />
-              </button>
-              <button
-                onClick={toggleAmbience}
-                aria-label={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
-                aria-pressed={isAudioPlaying}
-                title={isAudioPlaying ? 'Turn off archive ambience' : 'Turn on archive ambience'}
-                className={`p-2 border transition-colors cursor-pointer ${
-                  isAudioPlaying
-                    ? 'border-[#4A5D4E] text-[#4A5D4E]'
-                    : 'border-transparent text-[#737373] hover:border-[#262626] hover:text-[#e5e5e5]'
-                }`}
-              >
-                {isAudioPlaying ? <Volume2 size={14} strokeWidth={1.5} /> : <VolumeX size={14} strokeWidth={1.5} />}
-              </button>
-              <button
-                onClick={handleCloseSession}
-                aria-label="Close session"
-                title="Close session"
-                className="p-2 text-[#737373] hover:text-[#e5e5e5] border border-transparent hover:border-[#262626] transition-colors cursor-pointer"
-              >
-                <LogOut size={14} strokeWidth={1.5} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Memory Key Modal / Reveal */}
-      {showKeyModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
-          <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-mono shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-              <div className="space-y-2 text-center border-b border-[#262626] pb-4">
-                <h3 className="text-sm font-light text-white uppercase tracking-[0.2em]">
-                  Your Memory Key
-                </h3>
-                <p className="text-[10px] text-[#737373] tracking-wide">
-                  Keep this key safe. Amnesia cannot recover lost keys.
-                </p>
-            </div>
-
-            <div className="p-4 bg-[#080808] border border-[#262626] text-center select-all space-y-3">
-              <div className="text-[10px] uppercase tracking-[0.25em] text-[#737373]">Recovery Phrase</div>
-              <div className="flex flex-col items-center gap-1 font-mono text-sm text-[#4A5D4E] font-semibold">
-                {recoveryGroups.length > 0
-                  ? recoveryGroups.map((group, index) => <span key={`${group}-${index}`}>{group}{index < recoveryGroups.length - 1 ? '-' : ''}</span>)
-                  : <span className="text-[#737373]">Unavailable after session reload</span>}
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleCopyKey}
-                className="flex-1 py-3 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] text-xs uppercase tracking-widest transition-colors cursor-pointer"
-              >
-                {copiedKey ? 'Copied ✓' : 'Copy Key'}
-              </button>
-              <button
-                onClick={() => setShowKeyModal(false)}
-                className="flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] text-xs uppercase tracking-widest transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MemoryKeyModal
+        show={showKeyModal}
+        recoveryGroups={recoveryGroups}
+        copiedKey={copiedKey}
+        onCopyKey={handleCopyKey}
+        onClose={() => setShowKeyModal(false)}
+      />
 
       {/* Archive Personality Header */}
       <div className="space-y-2 text-center sm:text-left">
         <h1 className="text-2xl sm:text-3xl font-light tracking-[0.2em] text-white uppercase font-serif">
           Your Archive Awaits
         </h1>
-          <p className="text-xs sm:text-sm text-[#888888] font-mono tracking-wider uppercase">
+        <p className="text-xs sm:text-sm text-[#888888] font-mono tracking-wider uppercase">
           Forget today. Remember next year.
         </p>
       </div>
@@ -723,7 +403,7 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
       )}
 
       {/* Statistics Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-6 bg-[#111111] border border-[#262626] font-mono text-xs text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-6 bg-[#111111] border border-[#262626] font-mono text-xs text-center">
         <div className="space-y-1">
           <div className="text-[#888888] text-[10px] uppercase tracking-wider">Total Sealed</div>
           <div className="text-[#e5e5e5] text-base font-light">{stats.totalMemories}</div>
@@ -744,130 +424,26 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         </div>
       </div>
 
-      {/* Write Memory Form */}
-      <div className="bg-[#111111] border border-[#262626] p-6 sm:p-8 space-y-6">
-        <div className="border-b border-[#262626] pb-4 flex justify-between items-baseline">
-          <h2 className="text-lg font-light text-[#e5e5e5] tracking-widest uppercase">
-            Seal A Memory
-          </h2>
-          <span className="font-mono text-[10px] text-[#888888] uppercase tracking-wider">
-            1 Memory per day limit
-          </span>
-        </div>
+      <MemoryComposer
+        memoryText={memoryText}
+        hasWrittenToday={hasWrittenToday}
+        hasDraftPrompt={hasDraftPrompt}
+        isSubmitting={isSubmitting}
+        submitError={submitError}
+        onTextChange={handleTextChange}
+        onContinueDraft={continueDraft}
+        onDiscardDraft={clearDraft}
+        onSubmit={handleStartReview}
+      />
 
-        {hasWrittenToday ? (
-          <div className="p-6 bg-[#080808] border border-[#262626] text-center space-y-2">
-            <p className="font-serif italic text-base text-[#e5e5e5]">
-              Today's memory has been safely archived.
-            </p>
-            <p className="font-mono text-xs text-[#888888]">
-              Return tomorrow to leave another memory behind.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Unfinished Local Draft Alert */}
-            {hasDraftPrompt && (
-              <div className="p-4 bg-[#171717] border border-[#4A5D4E]/40 text-xs font-mono flex flex-col sm:flex-row justify-between items-center gap-3">
-                <span className="text-[#e5e5e5]">An unfinished memory was found on this device.</span>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={handleContinueDraft}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] uppercase tracking-wider cursor-pointer"
-                  >
-                    Continue
-                  </button>
-                  <button
-                    onClick={handleDiscardDraft}
-                    className="flex-1 sm:flex-none px-4 py-2 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] uppercase tracking-wider cursor-pointer"
-                  >
-                    Discard
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleStartReview} className="space-y-4">
-              <div className="relative">
-                <textarea
-                  value={memoryText}
-                  onChange={(e) => handleTextChange(e.target.value)}
-                  placeholder="Leave something behind..."
-                  rows={6}
-                  className="w-full bg-[#080808] border border-[#262626] focus:border-[#4A5D4E] p-5 text-[#e5e5e5] font-serif text-base leading-relaxed placeholder-[#525252] outline-none transition-colors resize-none"
-                />
-                <div className="absolute bottom-3 right-4 font-mono text-[10px] text-[#737373]">
-                  {memoryText.length} / 2000
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <span className="font-mono text-[10px] text-[#737373] tracking-wide italic">
-                  Drafts are kept in this browser tab only and are cleared when the tab closes, or when you seal, discard, or sign out.
-                </span>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !memoryText.trim()}
-                  className="w-full sm:w-auto px-8 py-3.5 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] disabled:opacity-40 font-mono text-xs uppercase tracking-[0.2em] transition-all cursor-pointer shadow-lg"
-                >
-                  Seal Memory
-                </button>
-              </div>
-
-              {submitError && (
-                <p className="font-mono text-xs text-[#f87171] pt-2">{submitError}</p>
-              )}
-            </form>
-          </div>
-        )}
-      </div>
-
-      {/* Final Review Modal Before Sealing */}
-      {showReviewModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
-          <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-xl w-full min-w-0 p-6 sm:p-10 space-y-6 font-serif shadow-2xl animate-fade-in max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-            <div className="space-y-2 text-center border-b border-[#262626] pb-4">
-              <h3 className="text-xl font-light text-white uppercase tracking-[0.2em]">
-                Review your memory one final time
-              </h3>
-              <p className="text-xs font-mono text-[#a0a0a0] pt-2 leading-relaxed">
-                Once sealed it cannot be changed or read again until{' '}
-                <span className="text-[#4A5D4E] font-medium">{getTargetUnlockDateFormatted()}</span>
-              </p>
-            </div>
-
-            <div className="p-6 bg-[#080808] border border-[#262626] text-[#f3f4f6] text-base leading-relaxed font-serif whitespace-pre-wrap max-h-60 overflow-y-auto">
-              {memoryText}
-            </div>
-
-            <div className="text-center font-mono text-[10px] text-[#737373] tracking-wider uppercase space-y-1">
-              <div>Every memory is encrypted before it is archived.</div>
-              <div>Your Memory Key is never stored. We cannot recover lost Memory Keys.</div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-3 font-mono text-xs pt-2">
-              <button
-                type="button"
-                onClick={() => setShowReviewModal(false)}
-                className="w-full sm:w-1/2 py-3.5 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] cursor-pointer uppercase tracking-widest transition-colors"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={handleSealForever}
-                disabled={isSubmitting}
-                className="w-full sm:w-1/2 py-3.5 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] cursor-pointer uppercase tracking-widest transition-colors shadow-lg font-medium"
-              >
-                {isSubmitting ? 'Sealing...' : 'Seal Forever'}
-              </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ReviewModal
+        show={showReviewModal}
+        memoryText={memoryText}
+        isSubmitting={isSubmitting}
+        targetUnlockDate={getTargetUnlockDateFormatted()}
+        onEdit={() => setShowReviewModal(false)}
+        onSeal={handleSealForever}
+      />
 
       {/* Dedicated Memory Reading Page Overlay */}
       {readingMemory && (
@@ -886,7 +462,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
               </span>
             </div>
 
-            {/* Check if first time read or already read */}
             {(!readingMemory.firstReadAt && !openedMemoryIds.includes(readingMemory.id)) ? (
               <div className="py-16 text-center space-y-8 my-12 animate-fade-in">
                 <div className="space-y-3">
@@ -894,14 +469,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
                     This memory waited
                   </p>
                   <p className="text-2xl sm:text-3xl font-mono text-[#4A5D4E] font-light uppercase tracking-[0.2em]">
-                    365 Days
+                    One Year
                   </p>
                   <p className="font-serif italic text-xl sm:text-2xl text-[#e5e5e5]">
                     to be read.
                   </p>
                 </div>
                 <button
-                  onClick={() => handleConfirmRitualOpen(readingMemory.id)}
+                  onClick={() => confirmRitualOpen(readingMemory.id)}
                   className="px-10 py-4 bg-[#4A5D4E] hover:bg-[#3d4f41] text-[#f3f4f6] font-mono text-xs uppercase tracking-[0.2em] transition-all cursor-pointer shadow-2xl"
                 >
                   Open Memory
@@ -938,140 +513,14 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         </div>
       )}
 
-      {/* Memory Index / Archive List */}
-      <div className="space-y-8 pt-6">
-        <div className="border-b border-[#262626] pb-3 flex flex-wrap justify-between items-baseline gap-2">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-light text-white tracking-widest uppercase font-serif">
-              Archive Index
-            </h2>
-          </div>
-          <span className="font-mono text-xs text-[#888888] uppercase tracking-wider">
-            TIME LOCKED VAULT
-          </span>
-        </div>
-
-        {memories.length === 0 ? (
-          <div className="py-12 px-6 text-center text-[#737373] font-serif italic text-sm border border-dashed border-[#262626] space-y-4">
-            <div>The archive is waiting for its first memory.</div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Awakened Memories Section */}
-            {memories.filter((m) => m.unlocked).length > 0 && (
-              <div className="space-y-4">
-                <div className="font-mono text-xs text-[#a3a3a3] uppercase tracking-widest border-l-2 border-[#4A5D4E] pl-3 py-0.5">
-                  Awakened Memories ({memories.filter((m) => m.unlocked).length})
-                </div>
-                <div className="space-y-3">
-                  {memories
-                    .filter((m) => m.unlocked)
-                    .map((mem) => {
-                       const stampId = formatEntryId(mem.id);
-                      const createdStr = formatDate(mem.createdAt);
-                      const unlockStr = formatDate(mem.unlockAt);
-                      const isOpenedInSession = openedMemoryIds.includes(mem.id);
-                      const hasBeenReadBefore = Boolean(mem.firstReadAt) || isOpenedInSession;
-                      const preview = mem.content
-                        ? mem.content.length > 90
-                          ? mem.content.slice(0, 90) + '...'
-                          : mem.content
-                        : '';
-
-                      return (
-                        <div
-                          key={mem.id}
-                          className="bg-[#111111] border border-[#262626] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:border-[#4A5D4E]/50 group"
-                        >
-                          <div className="space-y-1.5 font-mono text-xs max-w-xl">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[#e5e5e5] font-semibold text-[11px] tracking-wider">
-                                ENTRY {stampId}
-                              </span>
-                              <span className="px-2 py-0.5 bg-[#4A5D4E]/10 border border-[#4A5D4E]/40 text-[#4A5D4E] text-[9px] font-semibold uppercase tracking-widest">
-                                Awakened
-                              </span>
-                              {!hasBeenReadBefore && (
-                                <span className="px-2 py-0.5 bg-[#f59e0b]/10 border border-[#f59e0b]/40 text-[#f59e0b] text-[9px] font-semibold uppercase tracking-widest">
-                                  Unread
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-[#737373]">
-                              Sealed {createdStr} • Awakened {unlockStr}
-                            </div>
-                            {hasBeenReadBefore && preview && (
-                              <div className="font-serif italic text-xs text-[#a3a3a3] pt-0.5 line-clamp-1">
-                                "{preview}"
-                              </div>
-                            )}
-                            {!hasBeenReadBefore && (
-                              <div className="font-serif italic text-xs text-[#4A5D4E] pt-0.5">
-                                This memory is waiting to be opened for the first time.
-                              </div>
-                            )}
-                          </div>
-
-                          <button
-                            onClick={() => setReadingMemory(mem)}
-                            className="self-start sm:self-center px-4 py-2 bg-[#171717] hover:bg-[#222222] border border-[#333333] hover:border-[#4A5D4E] text-[#f3f4f6] font-mono text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm group-hover:border-[#4A5D4E]"
-                          >
-                            <span>{!hasBeenReadBefore ? 'Open Memory' : 'Read Memory'}</span>
-                            <span className="text-[#4A5D4E] transition-transform group-hover:translate-x-0.5">→</span>
-                          </button>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-
-            {/* Sleeping Memories Section */}
-            {memories.filter((m) => !m.unlocked).length > 0 && (
-              <div className="space-y-4">
-                <div className="font-mono text-xs text-[#888888] uppercase tracking-widest border-l-2 border-[#262626] pl-3 py-0.5">
-                  Sleeping Memories ({memories.filter((m) => !m.unlocked).length})
-                </div>
-                <div className="space-y-3">
-                  {memories
-                    .filter((m) => !m.unlocked)
-                    .map((mem) => {
-                       const stampId = formatEntryId(mem.id);
-                      const createdStr = formatDate(mem.createdAt);
-                      const unlockStr = formatDate(mem.unlockAt);
-                      const daysLeft = calculateDaysLeft(mem.unlockAt);
-
-                      return (
-                        <div
-                          key={mem.id}
-                          className="bg-[#0e0e0e] border border-[#1f1f1f] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs transition-colors hover:border-[#2a2a2a]"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[#a3a3a3] font-semibold text-[11px] tracking-wider">
-                                ENTRY {stampId}
-                              </span>
-                              <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#737373] text-[9px] uppercase tracking-widest">
-                                Sleeping
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-[#525252]">
-                              Sealed {createdStr} • Awakens {unlockStr}
-                            </div>
-                          </div>
-
-                          <div className="text-[#4A5D4E] text-[11px] tracking-wider uppercase font-mono self-start sm:self-center">
-                            Awakens in {daysLeft} {daysLeft === 1 ? 'day' : 'days'}
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <ArchiveIndex
+        memories={memories}
+        now={currentTime}
+        openedMemoryIds={openedMemoryIds}
+        formatDate={formatDate}
+        formatEntryId={formatEntryId}
+        onOpenMemory={setReadingMemory}
+      />
 
       {/* Danger Zone: Delete Archive */}
       <div className="pt-12 border-t border-[#1f1f1f] flex justify-between items-center font-mono text-xs">
@@ -1090,125 +539,28 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         </button>
       </div>
 
-      {/* Archive Integrity Modal */}
-      {showIntegrityModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
-          <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-sm w-full min-w-0 p-6 space-y-6 font-mono text-xs animate-fade-in shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-            <div className="space-y-1 border-b border-[#262626] pb-3 text-center">
-              <h3 className="text-xs font-light text-white uppercase tracking-[0.2em]">Archive Integrity</h3>
-              <p className="text-[10px] text-[#737373]">Verification Protocol & System Health</p>
-            </div>
+      <IntegrityModal
+        show={showIntegrityModal}
+        lastVerifiedAt={integrityStatus?.lastVerifiedAt ?? null}
+        archiveSizeBytes={integrityStatus?.archiveSizeBytes ?? stats.archiveSizeBytes}
+        isTimekeeperAwakening={isTimekeeperAwakening}
+        onClose={() => setShowIntegrityModal(false)}
+      />
 
-            <div className="space-y-3 bg-[#080808] p-4 border border-[#262626] text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-[#737373] text-[10px] uppercase">Archive Status</span>
-                <span className="text-[#4A5D4E] font-medium uppercase">Encrypted</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#737373] text-[10px] uppercase">Vault Health</span>
-                <span className="text-[#e5e5e5]">Healthy</span>
-              </div>
-              <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Archive Engine</span>
-                  <span className="text-[#e5e5e5]">SQLite</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Last Verified</span>
-                  <span className="text-[#a3a3a3]">
-                    {integrityStatus ? formatLastVerified(integrityStatus.lastVerifiedAt) : 'Verifying...'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Archive Size</span>
-                  <span className="text-[#a3a3a3]">
-                    {(integrityStatus?.archiveSizeBytes ?? stats.archiveSizeBytes) ? `${((integrityStatus?.archiveSizeBytes ?? stats.archiveSizeBytes ?? 0) / 1024).toFixed(1)} KB` : '0 KB'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Timekeeper</span>
-                  <span className="text-[#4A5D4E]">{isTimekeeperAwakening ? 'Awakening...' : 'Healthy'}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Version</span>
-                  <span className="text-[#a3a3a3]">1.0.0</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#737373] text-[10px] uppercase">Build</span>
-                  <span className="text-[#a3a3a3]">2026.08.07</span>
-                </div>
-            </div>
+      <DeleteArchiveModal
+        show={showDeleteModal}
+        confirmKeyInput={confirmKeyInput}
+        deleteError={deleteError}
+        isDeleting={isDeleting}
+        onConfirmInputChange={setConfirmKeyInput}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setConfirmKeyInput('');
+          setDeleteError('');
+        }}
+        onSubmit={handleDeleteArchive}
+      />
 
-            <button
-              onClick={() => setShowIntegrityModal(false)}
-              className="w-full py-2.5 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] uppercase tracking-widest text-[11px] cursor-pointer"
-            >
-              Close
-            </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#080808]/90 backdrop-blur-sm">
-          <div className="min-h-full flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-[#262626] max-w-md w-full min-w-0 p-6 sm:p-8 space-y-6 font-serif max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-            <div className="space-y-2">
-              <h3 className="text-lg font-light text-[#f87171] uppercase tracking-widest">
-                Delete Archive
-              </h3>
-              <p className="text-xs text-[#a3a3a3] leading-relaxed">
-                This action is irreversible. Every memory in this archive will be permanently destroyed and the Memory Key will be permanently retired.
-              </p>
-            </div>
-
-            <form onSubmit={handleDeleteArchive} className="space-y-4">
-              <div className="space-y-2 font-mono text-xs">
-                <label className="text-[#737373] block text-[10px] uppercase">
-                  Type DELETE to Confirm
-                </label>
-                <input
-                  type="text"
-                  value={confirmKeyInput}
-                  onChange={(e) => setConfirmKeyInput(e.target.value)}
-                  placeholder="DELETE"
-                  className="w-full px-4 py-3 bg-[#080808] border border-[#262626] focus:border-[#f87171] text-[#e5e5e5] text-xs outline-none"
-                />
-              </div>
-
-              {deleteError && (
-                <p className="font-mono text-xs text-[#f87171]">{deleteError}</p>
-              )}
-
-              <div className="flex items-center gap-3 pt-2 font-mono text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setConfirmKeyInput('');
-                    setDeleteError('');
-                  }}
-                  className="flex-1 py-3 border border-[#262626] text-[#737373] hover:text-[#e5e5e5] cursor-pointer uppercase"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isDeleting || confirmKeyInput.trim() !== 'DELETE'}
-                  className="flex-1 py-3 bg-[#f87171]/10 hover:bg-[#f87171]/20 text-[#f87171] border border-[#f87171]/30 disabled:opacity-30 uppercase tracking-wider transition-colors cursor-pointer"
-                >
-                  {isDeleting ? 'Deleting...' : 'Delete Permanently'}
-                </button>
-              </div>
-            </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
       <Footer
         onNavigateMachine={onNavigateMachine}
         onNavigateTerms={onNavigateTerms}

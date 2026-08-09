@@ -427,7 +427,6 @@ export function generateMemoryKey(): string {
   throw new Error('Failed to generate a unique memory key after multiple attempts');
 }
 
-// Create Archive
 export function createArchive(): { key: string; createdAt: string } {
   const key = generateMemoryKey();
   const keyHash = hashKey(key);
@@ -493,7 +492,6 @@ export function createSessionV2(authVerifier: string, authSalt: string): { sessi
   return createSessionForArchive(archive.id);
 }
 
-// Get Archive by Key
 export function getArchiveByKey(rawKey: string): { id: number; keyHash: string; createdAt: string; lastActiveAt: string; previousLastActiveAt: string | null } | null {
   const archive = findArchiveByKey(rawKey);
   if (!archive) return null;
@@ -519,7 +517,6 @@ function findArchiveByKey(rawKey: string): { id: number; keyHash: string; create
   return { ...row, keyHash };
 }
 
-// Add Memory
 export function addMemory(rawKey: string, text: string): AddMemoryResult {
   const archive = getArchiveByKey(rawKey);
   if (!archive) {
@@ -833,7 +830,6 @@ function getMemoriesForArchiveId(archiveId: number): ArchiveDataResponse | null 
   };
 }
 
-// Mark Memory Read
 export type MarkMemoryReadResult =
   | { success: true; firstReadAt: string; readCount: number }
   | { success: false; error: string };
@@ -887,7 +883,6 @@ function markMemoryReadForArchive(archiveId: number, memoryId: number): MarkMemo
   };
 }
 
-// Delete Archive
 export function deleteArchive(rawKey: string): boolean {
   const keyHash = hashKey(rawKey);
   const archive = getArchiveByKey(rawKey);
@@ -897,13 +892,9 @@ export function deleteArchive(rawKey: string): boolean {
 
   db.exec('BEGIN TRANSACTION;');
   try {
-    // Delete memories
-    const deleteMemoriesStmt = db.prepare('DELETE FROM memories WHERE archive_id = ?');
-    deleteMemoriesStmt.run(archive.id);
+    db.prepare('DELETE FROM memories WHERE archive_id = ?').run(archive.id);
 
-    // Delete archive
-    const deleteArchiveStmt = db.prepare('DELETE FROM archives WHERE id = ?');
-    deleteArchiveStmt.run(archive.id);
+    db.prepare('DELETE FROM archives WHERE id = ?').run(archive.id);
 
     // Retire key permanently. Only non-reversible hashes are stored; the raw
     // Recovery Phrase is never written or logged.
@@ -936,7 +927,6 @@ export function deleteArchiveById(archiveId: number): boolean {
   }
 }
 
-// Timekeeper process
 export function runTimekeeperProcess(): { unlockedCount: number; runAt: string } {
   const now = new Date().toISOString();
 
@@ -948,7 +938,6 @@ export function runTimekeeperProcess(): { unlockedCount: number; runAt: string }
   const result = stmt.run(now);
   const unlockedCount = Number(result.changes);
 
-  // Log in timekeeper_logs
   const logStmt = db.prepare(`
     INSERT INTO timekeeper_logs (run_at, unlocked_count, details)
     VALUES (?, ?, ?)
@@ -958,7 +947,6 @@ export function runTimekeeperProcess(): { unlockedCount: number; runAt: string }
   return { unlockedCount, runAt: now };
 }
 
-// Public Anonymous Statistics
 export function getPublicStats(): {
   archivesOpened: number;
   sleepingMemories: number;
@@ -984,7 +972,6 @@ export function getPublicStats(): {
   };
 }
 
-// Machine Page Metrics
 export function getMachineMetrics(): {
   loadAverage: number;
   ramUsedMb: number;
