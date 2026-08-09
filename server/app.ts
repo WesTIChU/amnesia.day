@@ -229,6 +229,14 @@ export async function buildApp(): Promise<express.Express> {
 
   app.use('/api/', generalLimiter);
 
+  // Archive responses carry encrypted memory material and session data, so
+  // they must never be cached by browsers, proxies, or CDNs.
+  app.use('/api/archive', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+  });
+
   // API Endpoints
   app.get('/api/stats', telemetryLimiter, (req, res) => {
     try {
@@ -434,12 +442,28 @@ export async function buildApp(): Promise<express.Express> {
     app.use(vite.middlewares);
   } else {
     const distPath = process.env.AMNESIA_DIST_PATH || path.join(process.cwd(), 'dist');
-    // The server bundle and its source map are built into server-dist/ (outside
-    // the public tree) and must never be served. Direct requests return an
-    // explicit 404 rather than falling through to the SPA fallback.
-    app.get(['/server.cjs', '/server.cjs.map'], (req, res) => {
-      res.status(404).type('text/plain').send('Not found');
-    });
+    // The server bundle, its source map, and other sensitive or reserved paths
+    // must never be served. Direct requests return an explicit 404 rather than
+    // falling through to the SPA fallback. These are exact reserved patterns,
+    // so legitimate SPA routes (/, /about, /faq, etc.) are unaffected.
+    app.get(
+      [
+        '/.env',
+        '/.env.*',
+        '/.git',
+        '/.git/*',
+        '/data',
+        '/data/*',
+        '/master.key',
+        '/package.json',
+        '/package-lock.json',
+        '/server.cjs',
+        '/server.cjs.map',
+      ],
+      (_req, res) => {
+        res.status(404).type('text/plain').send('Not found');
+      }
+    );
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

@@ -58,3 +58,30 @@ test('the server bundle is never served', async () => {
     assert.doesNotMatch(body, /Amnesia/, `GET ${pathname} must not leak server code or the SPA`);
   }
 });
+
+test('sensitive-looking paths return an explicit 404, not the SPA', async () => {
+  const sensitivePaths = [
+    '/.env',
+    '/.env.local',
+    '/.env.production',
+    '/.git',
+    '/.git/config',
+    '/data',
+    '/data/amnesia.db',
+    '/master.key',
+    '/package.json',
+    '/package-lock.json',
+    '/server.cjs',
+    '/server.cjs.map',
+  ];
+  for (const pathname of sensitivePaths) {
+    const res = await fetch(`${baseUrl}${pathname}`);
+    assert.equal(res.status, 404, `GET ${pathname} must return 404, not the SPA fallback`);
+    const body = await res.text();
+    assert.doesNotMatch(body, /Amnesia/, `GET ${pathname} must not leak the SPA`);
+  }
+
+  // Legitimate SPA routes must be unaffected by the sensitive-path block.
+  const spa = await fetch(`${baseUrl}/about`);
+  assert.equal(spa.status, 200, 'GET /about must still return the SPA');
+});

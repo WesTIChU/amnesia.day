@@ -175,6 +175,21 @@ test('V2 creation, encrypted memory, Timekeeper material and read flow', async (
   assert.equal(read.readCount, 1);
 });
 
+test('authenticated archive responses must never be cached', async () => {
+  const client = createClient(baseUrl);
+  await createArchive(client);
+
+  const res = await client.request('/api/archive/session');
+  assert.equal(res.status, 200, 'session fetch should succeed');
+  assert.equal(res.headers.get('cache-control'), 'no-store, private', 'archive responses must not be cached');
+  assert.equal(res.headers.get('pragma'), 'no-cache', 'archive responses must carry a no-cache pragma');
+
+  // The no-store policy must also cover released (decrypted) content delivery.
+  const integrity = await client.request('/api/archive/integrity');
+  assert.equal(integrity.status, 200);
+  assert.equal(integrity.headers.get('cache-control'), 'no-store, private');
+});
+
 test('plaintext, malformed and oversized submissions are rejected', async () => {
   const client = createClient(baseUrl);
   const { key, archiveId, encryptionSalt } = await createArchive(client);

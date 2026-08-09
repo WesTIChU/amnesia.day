@@ -88,15 +88,13 @@ db.exec(`
 
 // Retired-key migration: keep existing retired records, add a non-reversible
 // V2 lookup identifier so a retired Recovery Phrase cannot be re-registered.
-try {
-  const retiredCols = db.prepare('PRAGMA table_info(retired_keys)').all() as Array<{ name: string }>;
-  if (!retiredCols.some((c) => c.name === 'auth_lookup_hash')) {
-    db.exec('ALTER TABLE retired_keys ADD COLUMN auth_lookup_hash TEXT;');
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_retired_keys_auth_lookup ON retired_keys(auth_lookup_hash);');
-} catch (e) {
-  console.error('Schema check on retired_keys table:', e);
+// This is a security invariant, so any failure here aborts startup instead of
+// silently running without the lookup column or index.
+const retiredCols = db.prepare('PRAGMA table_info(retired_keys)').all() as Array<{ name: string }>;
+if (!retiredCols.some((c) => c.name === 'auth_lookup_hash')) {
+  db.exec('ALTER TABLE retired_keys ADD COLUMN auth_lookup_hash TEXT;');
 }
+db.exec('CREATE INDEX IF NOT EXISTS idx_retired_keys_auth_lookup ON retired_keys(auth_lookup_hash);');
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
@@ -167,49 +165,47 @@ export type CreateArchiveV2Result =
   | { ok: true; archiveId: number; createdAt: string; encryptionSalt: string }
   | { ok: false; reason: 'retired' | 'duplicate' };
 
-// Run migration check for memories table columns
-try {
-  const archiveTableInfo = db.prepare("PRAGMA table_info(archives)").all() as Array<{ name: string }>;
-  const archiveColumns = archiveTableInfo.map((c) => c.name);
-  if (!archiveColumns.includes('archive_version')) db.exec('ALTER TABLE archives ADD COLUMN archive_version INTEGER DEFAULT 1;');
-  if (!archiveColumns.includes('auth_salt')) db.exec('ALTER TABLE archives ADD COLUMN auth_salt TEXT;');
-  if (!archiveColumns.includes('auth_lookup_hash')) db.exec('ALTER TABLE archives ADD COLUMN auth_lookup_hash TEXT;');
-  if (!archiveColumns.includes('encryption_salt')) db.exec('ALTER TABLE archives ADD COLUMN encryption_salt TEXT;');
+// Run migration check for required archives/memories table columns. These
+// columns enforce encryption and time-lock invariants, so any failure here
+// aborts startup instead of running with missing required columns.
+const archiveTableInfo = db.prepare("PRAGMA table_info(archives)").all() as Array<{ name: string }>;
+const archiveColumns = archiveTableInfo.map((c) => c.name);
+if (!archiveColumns.includes('archive_version')) db.exec('ALTER TABLE archives ADD COLUMN archive_version INTEGER DEFAULT 1;');
+if (!archiveColumns.includes('auth_salt')) db.exec('ALTER TABLE archives ADD COLUMN auth_salt TEXT;');
+if (!archiveColumns.includes('auth_lookup_hash')) db.exec('ALTER TABLE archives ADD COLUMN auth_lookup_hash TEXT;');
+if (!archiveColumns.includes('encryption_salt')) db.exec('ALTER TABLE archives ADD COLUMN encryption_salt TEXT;');
 
-  const tableInfo = db.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>;
-  const colNames = tableInfo.map((c) => c.name);
+const tableInfo = db.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>;
+const colNames = tableInfo.map((c) => c.name);
 
-  if (!colNames.includes('ciphertext')) {
-    db.exec('ALTER TABLE memories ADD COLUMN ciphertext TEXT;');
-  }
-  if (!colNames.includes('encrypted_dek')) {
-    db.exec('ALTER TABLE memories ADD COLUMN encrypted_dek TEXT;');
-  }
-  if (!colNames.includes('nonce')) {
-    db.exec('ALTER TABLE memories ADD COLUMN nonce TEXT;');
-  }
-  if (!colNames.includes('auth_tag')) {
-    db.exec('ALTER TABLE memories ADD COLUMN auth_tag TEXT;');
-  }
-  if (!colNames.includes('encryption_version')) {
-    db.exec('ALTER TABLE memories ADD COLUMN encryption_version INTEGER DEFAULT 1;');
-  }
-  if (!colNames.includes('first_read_at')) {
-    db.exec('ALTER TABLE memories ADD COLUMN first_read_at TEXT;');
-  }
-  if (!colNames.includes('read_count')) {
-    db.exec('ALTER TABLE memories ADD COLUMN read_count INTEGER DEFAULT 0;');
-  }
-  if (!colNames.includes('client_salt')) db.exec('ALTER TABLE memories ADD COLUMN client_salt TEXT;');
-  if (!colNames.includes('client_memory_id')) db.exec('ALTER TABLE memories ADD COLUMN client_memory_id TEXT;');
-  if (!colNames.includes('timekeeper_secret')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_secret TEXT;');
-  if (!colNames.includes('timekeeper_ciphertext')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_ciphertext TEXT;');
-  if (!colNames.includes('timekeeper_nonce')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_nonce TEXT;');
-  if (!colNames.includes('timekeeper_auth_tag')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_auth_tag TEXT;');
-  if (!colNames.includes('memory_day')) db.exec('ALTER TABLE memories ADD COLUMN memory_day TEXT;');
-} catch (e) {
-  console.error('Schema check on memories table:', e);
+if (!colNames.includes('ciphertext')) {
+  db.exec('ALTER TABLE memories ADD COLUMN ciphertext TEXT;');
 }
+if (!colNames.includes('encrypted_dek')) {
+  db.exec('ALTER TABLE memories ADD COLUMN encrypted_dek TEXT;');
+}
+if (!colNames.includes('nonce')) {
+  db.exec('ALTER TABLE memories ADD COLUMN nonce TEXT;');
+}
+if (!colNames.includes('auth_tag')) {
+  db.exec('ALTER TABLE memories ADD COLUMN auth_tag TEXT;');
+}
+if (!colNames.includes('encryption_version')) {
+  db.exec('ALTER TABLE memories ADD COLUMN encryption_version INTEGER DEFAULT 1;');
+}
+if (!colNames.includes('first_read_at')) {
+  db.exec('ALTER TABLE memories ADD COLUMN first_read_at TEXT;');
+}
+if (!colNames.includes('read_count')) {
+  db.exec('ALTER TABLE memories ADD COLUMN read_count INTEGER DEFAULT 0;');
+}
+if (!colNames.includes('client_salt')) db.exec('ALTER TABLE memories ADD COLUMN client_salt TEXT;');
+if (!colNames.includes('client_memory_id')) db.exec('ALTER TABLE memories ADD COLUMN client_memory_id TEXT;');
+if (!colNames.includes('timekeeper_secret')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_secret TEXT;');
+if (!colNames.includes('timekeeper_ciphertext')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_ciphertext TEXT;');
+if (!colNames.includes('timekeeper_nonce')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_nonce TEXT;');
+if (!colNames.includes('timekeeper_auth_tag')) db.exec('ALTER TABLE memories ADD COLUMN timekeeper_auth_tag TEXT;');
+if (!colNames.includes('memory_day')) db.exec('ALTER TABLE memories ADD COLUMN memory_day TEXT;');
 
 // One-memory-per-UTC-day migration. Backfills the denormalised UTC calendar
 // day from created_at (ISO-8601 UTC), then fails closed: historical duplicate
@@ -264,35 +260,29 @@ runMemoryDayMigration(db);
 
 // Unique active lookup identifier migration. Duplicate non-null lookup hashes
 // indicate corrupted or conflicting archives; the server refuses to start
-// rather than silently deleting or merging them.
-try {
-  const duplicateLookup = db.prepare(`
-    SELECT auth_lookup_hash
-    FROM archives
-    WHERE auth_lookup_hash IS NOT NULL
-    GROUP BY auth_lookup_hash
-    HAVING COUNT(*) > 1
-    LIMIT 1
-  `).get() as { auth_lookup_hash: string } | undefined;
+// rather than silently deleting or merging them. Any failure creating or
+// verifying this index aborts startup.
+const duplicateLookup = db.prepare(`
+  SELECT auth_lookup_hash
+  FROM archives
+  WHERE auth_lookup_hash IS NOT NULL
+  GROUP BY auth_lookup_hash
+  HAVING COUNT(*) > 1
+  LIMIT 1
+`).get() as { auth_lookup_hash: string } | undefined;
 
-  if (duplicateLookup) {
-    throw new Error(
-      `Found duplicate active archive lookup identifier (auth_lookup_hash=${duplicateLookup.auth_lookup_hash}). ` +
-      'Duplicate archives must be resolved manually before the unique index can be created. ' +
-      'No archives were deleted or merged.'
-    );
-  }
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_archives_auth_lookup_unique
-      ON archives(auth_lookup_hash)
-      WHERE auth_lookup_hash IS NOT NULL;
-  `);
-} catch (e) {
-  if (e instanceof Error && e.message.startsWith('Found duplicate active archive lookup identifier')) {
-    throw e;
-  }
-  console.error('Schema check on archives.auth_lookup_hash:', e);
+if (duplicateLookup) {
+  throw new Error(
+    `Found duplicate active archive lookup identifier (auth_lookup_hash=${duplicateLookup.auth_lookup_hash}). ` +
+    'Duplicate archives must be resolved manually before the unique index can be created. ' +
+    'No archives were deleted or merged.'
+  );
 }
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_archives_auth_lookup_unique
+    ON archives(auth_lookup_hash)
+    WHERE auth_lookup_hash IS NOT NULL;
+`);
 
 // Migrate existing memories to Envelope Encryption
 function migrateMemoriesToEnvelopeEncryption() {
