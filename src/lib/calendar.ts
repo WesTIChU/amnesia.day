@@ -10,6 +10,45 @@ export const dayKey = (date: Date) =>
 
 export const keyFromIso = (iso: string) => dayKey(new Date(iso));
 
+// Builds the same UTC day key as dayKey for an explicit (year, month, day)
+// triple. month is 0-indexed like the Date constructor and MONTH_NAMES.
+export const dayKeyFor = (year: number, month: number, day: number) =>
+  `${year}-${pad(month + 1)}-${pad(day)}`;
+
+export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  const total = year * 12 + month + delta;
+  return { year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 };
+}
+
+export function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+// Mobile single-month navigation keeps the selected day of month where it fits,
+// and clamps it to the new month's last day when it does not (e.g. 31 -> Feb).
+export function clampDayToMonth(day: string, year: number, month: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  if (y === year && m === month + 1) return day;
+  return dayKeyFor(year, month, Math.min(d, daysInMonth(year, month)));
+}
+
+// The mobile calendar opens on the current UTC month, matching the calendar's
+// UTC day keys and the server's UTC memory_day rules.
+export function calendarPosition(now: number): { year: number; month: number } {
+  const date = new Date(now);
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() };
+}
+
+// Mobile shows exactly one month; desktop shows all twelve of the year.
+export function visibleMonths(
+  mode: 'mobile' | 'desktop',
+  year: number,
+  month: number,
+): Array<{ year: number; month: number }> {
+  if (mode === 'mobile') return [{ year, month }];
+  return MONTH_NAMES.map((_, i) => ({ year, month: i }));
+}
+
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const MONTH_NAMES = [
@@ -19,10 +58,9 @@ export const MONTH_NAMES = [
 
 export function buildMonthCells(year: number, month: number): (number | null)[] {
   const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstWeekday; i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+  for (let day = 1; day <= daysInMonth(year, month); day++) cells.push(day);
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }

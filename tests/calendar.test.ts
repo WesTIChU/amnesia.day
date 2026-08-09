@@ -4,8 +4,14 @@ import {
   buildCalendarDayMaps,
   buildMonthCells,
   calculateDaysLeft,
+  calendarPosition,
+  clampDayToMonth,
+  dayKeyFor,
+  daysInMonth,
   getCalendarDayEntries,
   keyFromIso,
+  shiftMonth,
+  visibleMonths,
 } from '../src/lib/calendar.js';
 import type { Memory } from '../src/types.js';
 
@@ -92,6 +98,58 @@ test('buildMonthCells produces complete weeks with the right day count', () => {
   assert.equal(cells.length % 7, 0, 'month cells must fill complete weeks');
   assert.equal(cells.filter((c) => c !== null).length, 31, 'January has 31 days');
   assert.ok(cells.filter((c) => c === null).length > 0, 'leading blanks pad the first week');
+});
+
+test('shiftMonth wraps December forward into January of the next year', () => {
+  assert.deepEqual(shiftMonth(2026, 11, 1), { year: 2027, month: 0 });
+  assert.deepEqual(shiftMonth(2026, 11, 2), { year: 2027, month: 1 });
+  assert.deepEqual(shiftMonth(2026, 5, 1), { year: 2026, month: 6 });
+});
+
+test('shiftMonth wraps January backward into December of the previous year', () => {
+  assert.deepEqual(shiftMonth(2026, 0, -1), { year: 2025, month: 11 });
+  assert.deepEqual(shiftMonth(2026, 0, -2), { year: 2025, month: 10 });
+  assert.deepEqual(shiftMonth(2026, 5, -1), { year: 2026, month: 4 });
+});
+
+test('calendarPosition reports the current UTC month regardless of runtime timezone', () => {
+  // 23:30 UTC on 2026-08-09 is already 2026-08-10 in many timezones; the
+  // mobile calendar must still open on the UTC month (August, index 7).
+  assert.deepEqual(calendarPosition(new Date('2026-08-09T23:30:00.000Z').getTime()), { year: 2026, month: 7 });
+  assert.deepEqual(calendarPosition(new Date('2026-01-01T00:15:00.000Z').getTime()), { year: 2026, month: 0 });
+  assert.deepEqual(calendarPosition(new Date('2025-12-31T23:59:59.000Z').getTime()), { year: 2025, month: 11 });
+});
+
+test('mobile shows exactly one month while desktop shows all twelve', () => {
+  const mobile = visibleMonths('mobile', 2026, 7);
+  assert.equal(mobile.length, 1, 'mobile must render a single month');
+  assert.deepEqual(mobile, [{ year: 2026, month: 7 }]);
+
+  const desktop = visibleMonths('desktop', 2026, 7);
+  assert.equal(desktop.length, 12, 'desktop must keep the twelve-month overview');
+  assert.ok(desktop.every((m) => m.year === 2026));
+  assert.deepEqual(desktop.map((m) => m.month), Array.from({ length: 12 }, (_, i) => i));
+});
+
+test('clampDayToMonth keeps the selected day within the displayed month', () => {
+  assert.equal(clampDayToMonth('2026-08-09', 2026, 7), '2026-08-09', 'a day in the month is unchanged');
+  assert.equal(clampDayToMonth('2026-08-09', 2026, 8), '2026-09-09', 'the day of month survives navigation');
+  assert.equal(clampDayToMonth('2026-08-09', 2026, 11), '2026-12-09', 'wrapping to December keeps the day');
+  assert.equal(clampDayToMonth('2026-01-31', 2026, 1), '2026-02-28', 'Jan 31 clamps to a non-leap February');
+  assert.equal(clampDayToMonth('2028-01-31', 2028, 1), '2028-02-29', 'Jan 31 clamps to leap-day February');
+});
+
+test('dayKeyFor builds the same UTC keys the calendar relies on', () => {
+  assert.equal(dayKeyFor(2026, 0, 1), '2026-01-01');
+  assert.equal(dayKeyFor(2026, 7, 9), '2026-08-09');
+  assert.equal(dayKeyFor(2026, 11, 31), '2026-12-31');
+});
+
+test('daysInMonth reports February across leap years and the month lengths', () => {
+  assert.equal(daysInMonth(2026, 0), 31);
+  assert.equal(daysInMonth(2026, 1), 28);
+  assert.equal(daysInMonth(2028, 1), 29);
+  assert.equal(daysInMonth(2026, 11), 31);
 });
 
 test('calculateDaysLeft reports upcoming and past unlocks', () => {

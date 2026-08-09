@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useArchive } from '../../hooks/useArchive';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { ambientSound } from '../../lib/audio';
 import { getCsrfToken } from '../../lib/http';
 import { Footer } from '../Footer';
@@ -7,12 +8,15 @@ import { TopBar } from '../TopBar';
 import { LogOut, Volume2, VolumeX } from 'lucide-react';
 import {
   MONTH_NAMES,
-  WEEKDAYS,
   buildCalendarDayMaps,
-  buildMonthCells,
+  calendarPosition,
+  clampDayToMonth,
   dayKey,
   getCalendarDayEntries,
+  shiftMonth,
+  visibleMonths,
 } from '../../lib/calendar';
+import { MonthCard } from './MonthCard';
 import { AWAKENED_BADGE, SLEEPING_BADGE } from './MemoryEntryCard';
 
 interface ArchiveCalendarViewProps {
@@ -38,11 +42,27 @@ export const ArchiveCalendarView: React.FC<ArchiveCalendarViewProps> = ({
 }) => {
   const { data, loading, error, currentTime } = useArchive({ memoryKey, onSessionExpired });
   const [isAudioPlaying, setIsAudioPlaying] = useState(() => ambientSound.getIsPlaying());
-  const [calendarYear, setCalendarYear] = useState(() => new Date(currentTime).getUTCFullYear());
+  const [calendarYear, setCalendarYear] = useState(() => calendarPosition(currentTime).year);
+  const [mobileMonth, setMobileMonth] = useState(() => calendarPosition(currentTime).month);
   const [selectedDay, setSelectedDay] = useState(() => dayKey(new Date(currentTime)));
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   const toggleAmbience = () => {
     setIsAudioPlaying(ambientSound.toggle());
+  };
+
+  const handlePrevMonth = () => {
+    const target = shiftMonth(calendarYear, mobileMonth, -1);
+    setCalendarYear(target.year);
+    setMobileMonth(target.month);
+    setSelectedDay((prev) => clampDayToMonth(prev, target.year, target.month));
+  };
+
+  const handleNextMonth = () => {
+    const target = shiftMonth(calendarYear, mobileMonth, 1);
+    setCalendarYear(target.year);
+    setMobileMonth(target.month);
+    setSelectedDay((prev) => clampDayToMonth(prev, target.year, target.month));
   };
 
   const handleCloseSession = async () => {
@@ -147,23 +167,25 @@ export const ArchiveCalendarView: React.FC<ArchiveCalendarViewProps> = ({
         </p>
       </div>
 
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setCalendarYear(calendarYear - 1)}
-          className="px-4 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-xs uppercase tracking-widest transition-colors cursor-pointer"
-        >
-          ← {calendarYear - 1}
-        </button>
-        <div className="font-mono text-sm text-[#a3a3a3] uppercase tracking-[0.25em]">
-          {calendarYear}
+      {isDesktop && (
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setCalendarYear(calendarYear - 1)}
+            className="px-4 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-xs uppercase tracking-widest transition-colors cursor-pointer"
+          >
+            ← {calendarYear - 1}
+          </button>
+          <div className="font-mono text-sm text-[#a3a3a3] uppercase tracking-[0.25em]">
+            {calendarYear}
+          </div>
+          <button
+            onClick={() => setCalendarYear(calendarYear + 1)}
+            className="px-4 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-xs uppercase tracking-widest transition-colors cursor-pointer"
+          >
+            {calendarYear + 1} →
+          </button>
         </div>
-        <button
-          onClick={() => setCalendarYear(calendarYear + 1)}
-          className="px-4 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-xs uppercase tracking-widest transition-colors cursor-pointer"
-        >
-          {calendarYear + 1} →
-        </button>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[10px] uppercase tracking-widest text-[#737373]">
         <span className="flex items-center gap-2">
@@ -180,52 +202,53 @@ export const ArchiveCalendarView: React.FC<ArchiveCalendarViewProps> = ({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {MONTH_NAMES.map((monthName, monthIndex) => (
-          <div key={monthName} className="bg-[#0e0e0e] border border-[#1f1f1f] p-3">
-            <div className="font-mono text-[10px] text-[#888888] uppercase tracking-widest mb-2">
-              {monthName}
+      {isDesktop ? (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          {visibleMonths('desktop', calendarYear, mobileMonth).map(({ year, month }) => (
+            <MonthCard
+              key={MONTH_NAMES[month]}
+              year={year}
+              month={month}
+              monthName={MONTH_NAMES[month]}
+              maps={maps}
+              todayKey={todayKey}
+              selectedDay={selectedDay}
+              onSelectDay={setSelectedDay}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={handlePrevMonth}
+              className="px-3 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-[11px] uppercase tracking-widest transition-colors cursor-pointer"
+            >
+              ← Previous month
+            </button>
+            <div className="font-mono text-sm text-[#a3a3a3] uppercase tracking-[0.25em] whitespace-nowrap">
+              {MONTH_NAMES[mobileMonth]} {calendarYear}
             </div>
-            <div className="grid grid-cols-7 gap-px mb-1">
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="text-center text-[8px] font-mono uppercase tracking-widest text-[#525252]">
-                  {w}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-px">
-              {buildMonthCells(calendarYear, monthIndex).map((day, i) => {
-                if (day === null) return <div key={`empty-${i}`} />;
-                const key = `${calendarYear}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const hasSealed = (maps.sealedByDay.get(key)?.length ?? 0) > 0;
-                const hasAwakened = (maps.awakenedByDay.get(key)?.length ?? 0) > 0;
-                const isSelected = key === selectedDay;
-                const isToday = key === todayKey;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedDay(key)}
-                    aria-label={`${day} ${monthName} ${calendarYear}`}
-                    className={`aspect-square flex flex-col items-center justify-center text-[11px] font-mono transition-colors cursor-pointer border ${
-                      isSelected
-                        ? 'bg-[#4A5D4E]/15 border-[#4A5D4E]/60 text-[#e5e5e5]'
-                        : `border-transparent hover:border-[#262626] hover:bg-[#111111] ${
-                            hasAwakened || hasSealed ? 'text-[#a3a3a3]' : 'text-[#737373]'
-                          } ${isToday ? 'border-[#262626]' : ''}`
-                    }`}
-                  >
-                    <span>{day}</span>
-                    <span className="flex gap-1 h-1.5 items-center justify-center">
-                      {hasAwakened && <span className="w-1 h-1 rounded-full bg-[#4A5D4E]" />}
-                      {hasSealed && <span className="w-1 h-1 rounded-full bg-[#525252]" />}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <button
+              onClick={handleNextMonth}
+              className="px-3 py-2 bg-[#181818] hover:bg-[#222222] border border-[#2a2a2a] text-[#a3a3a3] hover:text-white font-mono text-[11px] uppercase tracking-widest transition-colors cursor-pointer"
+            >
+              Next month →
+            </button>
           </div>
-        ))}
-      </div>
+          <MonthCard
+            year={calendarYear}
+            month={mobileMonth}
+            monthName={MONTH_NAMES[mobileMonth]}
+            maps={maps}
+            todayKey={todayKey}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+            compact
+            showMonthName={false}
+          />
+        </div>
+      )}
 
       <div className="border border-[#1f1f1f] bg-[#111111] p-4 sm:p-5">
         <div className="font-mono text-xs text-[#a3a3a3] uppercase tracking-widest border-l-2 border-[#4A5D4E] pl-3 py-0.5 mb-1">
