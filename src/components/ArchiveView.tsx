@@ -24,6 +24,8 @@ interface ArchiveViewProps {
   onNavigateTerms?: () => void;
   onNavigatePrivacy?: () => void;
   onNavigateAbout?: () => void;
+  onNavigateCalendar: () => void;
+  onNavigateEntries: () => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({
@@ -35,6 +37,8 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   onNavigateTerms,
   onNavigatePrivacy,
   onNavigateAbout,
+  onNavigateCalendar,
+  onNavigateEntries,
 }) => {
   const keyParts = memoryKey?.split('-') || [];
   const isV2Key = keyParts.length >= 7;
@@ -520,6 +524,8 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         formatDate={formatDate}
         formatEntryId={formatEntryId}
         onOpenMemory={setReadingMemory}
+        onNavigateCalendar={onNavigateCalendar}
+        onNavigateEntries={onNavigateEntries}
       />
 
       {/* Danger Zone: Delete Archive */}

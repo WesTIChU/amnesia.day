@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { HomeView } from './components/HomeView';
 import { MemoryCardView } from './components/MemoryCardView';
 import { ArchiveView } from './components/ArchiveView';
+import { ArchiveCalendarView } from './components/archive/ArchiveCalendarView';
+import { ArchiveEntriesView } from './components/archive/ArchiveEntriesView';
 import { MachineView } from './components/MachineView';
 import { AboutView } from './components/AboutView';
 import { TermsView } from './components/TermsView';
@@ -9,6 +11,7 @@ import { PrivacyView } from './components/PrivacyView';
 import { FaqView } from './components/FaqView';
 import { OpenArchiveModal } from './components/OpenArchiveModal';
 import { createV2MemoryKey, deriveV2AuthVerifier, deriveV2LookupVerifier } from './lib/crypto';
+import { ROUTE_VAULT, resolvePath, sessionExpiryResolution, subRoutePath, type AppView } from './lib/routes';
 
 const SESSION_STORAGE_KEY = 'amnesia_active_session';
 
@@ -47,33 +50,24 @@ function clearStoredSession(): void {
 }
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'card' | 'archive' | 'machine' | 'terms' | 'privacy' | 'about' | 'faq'>('home');
+  const [currentView, setCurrentView] = useState<AppView>('home');
   const [activeKey, setActiveKey] = useState<string>(() => getStoredSession().activeKey);
   const [keyCreatedAt, setKeyCreatedAt] = useState<string>(() => getStoredSession().keyCreatedAt);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState<boolean>(false);
   const [isCreatingKey, setIsCreatingKey] = useState(false);
 
-  // Sync route with window.location.pathname
+  // Sync route with window.location.pathname. Direct access to authenticated
+  // archive sub-routes without an active client archive session is redirected
+  // to the archive-opening flow.
   useEffect(() => {
     const handleLocationChange = () => {
       const path = window.location.pathname;
-
-      if (path === '/vault') {
-        setCurrentView('archive');
-      } else if (path === '/machine') {
-        setCurrentView('machine');
-      } else if (path === '/terms') {
-        setCurrentView('terms');
-      } else if (path === '/privacy') {
-        setCurrentView('privacy');
-      } else if (path === '/about') {
-        setCurrentView('about');
-      } else if (path === '/faq') {
-        setCurrentView('faq');
-      } else {
-        setCurrentView('home');
-        if (path === '/card') window.history.replaceState({}, '', '/');
+      const hasActiveSession = getStoredSession().activeKey.length > 0;
+      const resolution = resolvePath(path, hasActiveSession);
+      if (resolution.redirectTo) {
+        window.history.replaceState({}, '', resolution.redirectTo);
       }
+      setCurrentView(resolution.view);
     };
 
     handleLocationChange();
@@ -113,7 +107,8 @@ export default function App() {
       },
     };
     const page = metadata[path] || metadata['/'];
-    const isPrivateRoute = path === '/vault' || path === '/card';
+    const isPrivateRoute =
+      path === '/vault' || path === '/card' || path === subRoutePath('calendar') || path === subRoutePath('entries');
     const canonicalPath = isPrivateRoute ? '/' : path;
 
     document.title = page.title;
@@ -216,6 +211,37 @@ export default function App() {
     }
   };
 
+  const handleGoVault = () => {
+    setCurrentView('archive');
+    if (window.location.pathname !== ROUTE_VAULT) {
+      window.history.pushState({}, '', ROUTE_VAULT);
+    }
+  };
+
+  const handleNavigateCalendar = () => {
+    if (!activeKey) {
+      handleGoSplash();
+      return;
+    }
+    const path = subRoutePath('calendar');
+    setCurrentView('archiveCalendar');
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+  };
+
+  const handleNavigateEntries = () => {
+    if (!activeKey) {
+      handleGoSplash();
+      return;
+    }
+    const path = subRoutePath('entries');
+    setCurrentView('archiveEntries');
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+  };
+
   const handleSessionClosed = () => {
     setActiveKey('');
     setKeyCreatedAt('');
@@ -227,6 +253,12 @@ export default function App() {
     setActiveKey('');
     setKeyCreatedAt('');
     clearStoredSession();
+    // Expired sessions return straight to the opening flow. replaceState (never
+    // pushState) also removes the expired private route from browser history,
+    // regardless of whether it was /vault, /vault/calendar or /vault/entries.
+    const expiry = sessionExpiryResolution();
+    setCurrentView(expiry.view);
+    window.history.replaceState({}, '', expiry.redirectTo);
   };
 
   return (
@@ -259,6 +291,34 @@ export default function App() {
         <ArchiveView
           memoryKey={activeKey || undefined}
           onGoHome={handleGoSplash}
+          onSessionClosed={handleSessionClosed}
+          onSessionExpired={handleSessionExpired}
+          onNavigateMachine={handleNavigateMachine}
+          onNavigateTerms={handleNavigateTerms}
+          onNavigatePrivacy={handleNavigatePrivacy}
+          onNavigateAbout={handleNavigateAbout}
+          onNavigateCalendar={handleNavigateCalendar}
+          onNavigateEntries={handleNavigateEntries}
+        />
+      )}
+
+      {currentView === 'archiveCalendar' && (
+        <ArchiveCalendarView
+          memoryKey={activeKey || undefined}
+          onGoVault={handleGoVault}
+          onSessionClosed={handleSessionClosed}
+          onSessionExpired={handleSessionExpired}
+          onNavigateMachine={handleNavigateMachine}
+          onNavigateTerms={handleNavigateTerms}
+          onNavigatePrivacy={handleNavigatePrivacy}
+          onNavigateAbout={handleNavigateAbout}
+        />
+      )}
+
+      {currentView === 'archiveEntries' && (
+        <ArchiveEntriesView
+          memoryKey={activeKey || undefined}
+          onGoVault={handleGoVault}
           onSessionClosed={handleSessionClosed}
           onSessionExpired={handleSessionExpired}
           onNavigateMachine={handleNavigateMachine}

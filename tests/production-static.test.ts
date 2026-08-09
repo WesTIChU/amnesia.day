@@ -85,3 +85,14 @@ test('sensitive-looking paths return an explicit 404, not the SPA', async () => 
   const spa = await fetch(`${baseUrl}/about`);
   assert.equal(spa.status, 200, 'GET /about must still return the SPA');
 });
+
+test('authenticated SPA sub-routes are served to the client router', async () => {
+  // /vault/calendar and /vault/entries are client-side routes: the server
+  // serves the SPA so the client can apply its own session guard, which
+  // redirects unauthenticated visitors back to the opening flow.
+  for (const pathname of ['/vault/calendar', '/vault/entries']) {
+    const res = await fetch(`${baseUrl}${pathname}`);
+    assert.equal(res.status, 200, `GET ${pathname} must serve the SPA`);
+    assert.match(await res.text(), /Amnesia SPA/, `GET ${pathname} must return the SPA shell`);
+  }
+});
