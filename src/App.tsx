@@ -87,15 +87,15 @@ export default function App() {
     const metadata: Record<string, { title: string; description: string }> = {
       '/': {
         title: 'Amnesia | Private One-Year Memory Archive',
-        description: 'Amnesia is a private one-year memory archive. Write a memory, encrypt it in your browser, and return when it awakens one year later.',
+        description: 'Amnesia is a private journaling and reflection space for memories, mindfulness, meditation notes, gratitude, and letters to your future self. Encrypt a memory in your browser and read it one year later.',
       },
       '/about': {
         title: 'About Amnesia | A One-Year Memory Archive',
-        description: 'Learn how Amnesia protects private memories with browser encryption, a server-enforced one-year release, and no personal data collection.',
+        description: 'Learn how Amnesia supports quiet journaling, reflection, mindfulness, and future-self letters with browser encryption, a server-enforced one-year release, and no personal data collection.',
       },
       '/faq': {
         title: 'Archive Questions | Amnesia',
-        description: 'Answers about Amnesia memory encryption, Recovery Phrases, one-year awakening, the Timekeeper, and archive deletion.',
+        description: 'Answers about private journaling, memory encryption, mindfulness and meditation notes, Recovery Phrases, one-year awakening, and archive deletion.',
       },
       '/privacy': {
         title: 'Privacy | Amnesia',

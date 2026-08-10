@@ -210,6 +210,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </section>
 
+      <section className="relative z-10 w-full max-w-4xl mx-auto pb-20 sm:pb-28" aria-labelledby="quiet-reflection">
+        <div className="max-w-2xl border-t border-white/[0.06] pt-10 sm:pt-12">
+          <p className="mb-4 text-[10px] font-mono tracking-[0.25em] uppercase text-[#4A5D4E]">A space for reflection</p>
+          <h2 id="quiet-reflection" className="mb-5 text-2xl sm:text-3xl font-light italic text-[#E5E5E5] leading-relaxed">
+            Make room for what matters.
+          </h2>
+          <p className="text-base text-[#858585] leading-relaxed">
+            Use Amnesia as a private journal for thoughtful notes, gratitude, mindfulness, meditation reflections, personal goals, or a letter to your future self. There are no streaks, notifications, or public profiles to interrupt your balance. Write honestly, seal the memory, and return when a year has given it some distance.
+          </p>
+        </div>
+      </section>
+
       {/* Footer & Machine Telemetry */}
       <footer className="relative z-10 flex flex-col items-center border-t border-white/5 pt-8 pb-4 gap-6 font-mono text-[10px] tracking-[0.1em] text-[#737373] uppercase">
         {/* Navigation row: Terms, Privacy, About */}

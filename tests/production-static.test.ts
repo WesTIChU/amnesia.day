@@ -49,6 +49,15 @@ test('production serves the SPA at /', async () => {
   assert.match(await res.text(), /<title>Amnesia<\/title>/);
 });
 
+test('production redirects an HTTP scheme reported by the front proxy', async () => {
+  const res = await fetch(`${baseUrl}/?source=http`, {
+    headers: { 'X-Forwarded-Proto': 'http' },
+    redirect: 'manual',
+  });
+  assert.equal(res.status, 308);
+  assert.equal(res.headers.get('location'), `${baseUrl.replace('http://', 'https://')}/?source=http`);
+});
+
 test('the server bundle is never served', async () => {
   for (const pathname of ['/server.cjs', '/server.cjs.map']) {
     const res = await fetch(`${baseUrl}${pathname}`);

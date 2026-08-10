@@ -98,6 +98,17 @@ export async function buildApp(): Promise<express.Express> {
 
   const isProduction = process.env.NODE_ENV === 'production';
 
+  // Cloudflare Tunnel forwards the original scheme in this header. Redirect
+  // HTTP crawls before they can receive a duplicate, non-canonical page.
+  if (isProduction) {
+    app.use((req, res, next) => {
+      if (req.get('X-Forwarded-Proto') === 'http') {
+        return res.redirect(308, `https://${req.get('host')}${req.originalUrl}`);
+      }
+      next();
+    });
+  }
+
   if (isProduction && process.env.TRUST_CLOUDFLARE_PROXY !== 'true') {
     console.warn(
       '[Amnesia] Running in production without TRUST_CLOUDFLARE_PROXY=true. If traffic arrives only through ' +

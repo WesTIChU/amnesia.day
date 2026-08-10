@@ -12,7 +12,7 @@ interface FaqViewProps {
 const questions = [
   {
     question: 'How does Amnesia work?',
-    answer: 'Write one memory per day, review it, and seal it. It is encrypted in your browser and held in your archive until its one-year calendar anniversary.',
+    answer: 'Write a journal entry, reflection, gratitude note, meditation note, or letter to your future self, review it, and seal it. It is encrypted in your browser and held in your archive until its one-year calendar anniversary.',
   },
   {
     question: 'Can Amnesia read my memories?',
