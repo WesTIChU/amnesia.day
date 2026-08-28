@@ -162,7 +162,7 @@ export const AboutView: React.FC<AboutViewProps> = ({
         <section id="promise" className="about-section space-y-5 text-center scroll-mt-6 border-t border-[#262626] pt-6">
           <h2 className="flex items-center justify-center gap-2 text-xs text-[#e5e5e5] uppercase tracking-widest font-mono">
             <span className="w-2 h-2 rounded-full bg-[#4A5D4E]"></span>
-            <span><span className="text-[#4A5D4E] mr-2">07</span>Our Promise</span>
+            <span><span className="text-[#4A5D4E] mr-2">07</span>My Promise</span>
           </h2>
           <div className="space-y-4 text-sm text-[#a3a3a3] max-w-md mx-auto leading-relaxed">
             <p>Amnesia is intentionally small.</p>
