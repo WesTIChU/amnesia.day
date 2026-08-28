@@ -142,6 +142,9 @@ export const AboutView: React.FC<AboutViewProps> = ({
             <p>
               The Amnesia website itself contains no advertising or analytics SDKs.
             </p>
+            <p>
+              For an app-like experience on iPhone or iPad, add Amnesia to your Home Screen. Open the site in Safari, tap the Share button, then choose "Add to Home Screen". The archive will get its own icon and open full screen, just like a native app. On Android, use Chrome, tap the menu (three dots), and choose "Add to Home screen".
+            </p>
           </div>
         </section>
 
@@ -165,7 +168,7 @@ export const AboutView: React.FC<AboutViewProps> = ({
             <p>Amnesia is intentionally small.</p>
             <p>
               It won't become a social network.<br />
-              It won't sell your data.<br />
+              It doesn't store your data, so there is nothing to sell.<br />
               It won't interrupt you with notifications.<br />
               It will never ask you to pay to access your own memories.
             </p>
