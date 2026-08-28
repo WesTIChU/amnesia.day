@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { ArchiveStats, MachineMetrics } from '../types';
-import { ambientSound } from '../lib/audio';
 import { AmnesiaLogo } from './AmnesiaLogo';
 
 interface HomeViewProps {
@@ -28,7 +27,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const [stats, setStats] = useState<ArchiveStats | null>(null);
   const [machineStats, setMachineStats] = useState<MachineMetrics | null>(null);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isMidnightActive, setIsMidnightActive] = useState(false);
 
   useEffect(() => {
@@ -70,36 +68,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   }, []);
 
-  const toggleAmbience = () => {
-    const active = ambientSound.toggle();
-    setIsAudioPlaying(active);
-  };
-
   return (
     <div className="relative min-h-screen bg-[#080808] text-[#D1D1D1] flex flex-col justify-between p-6 sm:p-12 lg:p-20 font-serif overflow-x-hidden transition-opacity duration-1000 ease-out animate-fade-in">
       {/* Subtle Visual Grid Lines */}
       <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/[0.02] pointer-events-none"></div>
       <div className="absolute left-0 right-0 top-1/2 h-[1px] bg-white/[0.02] pointer-events-none"></div>
-
-      {/* Top Header Navigation & Ambience Toggle */}
-      <div className="relative z-10 flex justify-between items-center text-[10px] sm:text-[11px] tracking-[0.2em] uppercase font-mono text-[#737373]">
-        <div className="flex items-center gap-3">
-          <span className="w-1.5 h-1.5 bg-[#4A5D4E] rounded-full"></span>
-          <span>Amnesia Vault</span>
-        </div>
-
-        <button
-          onClick={toggleAmbience}
-          className={`flex items-center gap-2 px-3 py-1.5 border transition-all cursor-pointer ${
-            isAudioPlaying
-              ? 'border-[#4A5D4E] text-[#4A5D4E] bg-[#4A5D4E]/10'
-              : 'border-[#262626] text-[#737373] hover:text-[#e5e5e5]'
-          }`}
-        >
-          <span>{isAudioPlaying ? '🔊' : '🔇'}</span>
-          <span>Archive Ambience</span>
-        </button>
-      </div>
 
       {/* Main Content */}
       <div className="relative z-10 flex-grow flex flex-col items-center justify-center text-center my-12 max-w-2xl mx-auto">
