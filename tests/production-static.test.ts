@@ -15,7 +15,7 @@ const distDir = path.join(tmpDir, 'dist');
 fs.mkdirSync(distDir, { recursive: true });
 fs.writeFileSync(
   path.join(distDir, 'index.html'),
-  '<!doctype html><html><head><title>Amnesia</title></head><body>Amnesia SPA</body></html>',
+  '<!doctype html><html lang="en"><head><title>Amnesia</title><meta name="description" content="fallback" /><meta name="robots" content="index, follow" /><link rel="canonical" href="https://amnesia.day/" /><meta property="og:title" content="Amnesia" /><meta property="og:description" content="fallback" /><meta property="og:url" content="https://amnesia.day/" /><meta name="twitter:title" content="Amnesia" /><meta name="twitter:description" content="fallback" /></head><body>Amnesia SPA</body></html>',
 );
 
 process.env.KEY_PEPPER = 'test-only-pepper';
@@ -46,7 +46,10 @@ after(() => {
 test('production serves the SPA at /', async () => {
   const res = await fetch(`${baseUrl}/`);
   assert.equal(res.status, 200, 'GET / should return the SPA');
-  assert.match(await res.text(), /<title>Amnesia<\/title>/);
+  const body = await res.text();
+  assert.match(body, /Amnesia SPA/, 'GET / must return the SPA shell body');
+  assert.match(body, /<title>Amnesia \| A Memory for Your Future Self<\/title>/);
+  assert.match(body, /rel="canonical" href="https:\/\/amnesia\.day\/"/);
 });
 
 test('production redirects an HTTP scheme reported by the front proxy', async () => {
@@ -103,5 +106,47 @@ test('authenticated SPA sub-routes are served to the client router', async () =>
     const res = await fetch(`${baseUrl}${pathname}`);
     assert.equal(res.status, 200, `GET ${pathname} must serve the SPA`);
     assert.match(await res.text(), /Amnesia SPA/, `GET ${pathname} must return the SPA shell`);
+  }
+});
+
+test('private routes are noindex at the server', async () => {
+  for (const pathname of ['/vault', '/card', '/vault/calendar', '/vault/entries']) {
+    const res = await fetch(`${baseUrl}${pathname}`);
+    assert.equal(res.status, 200, `GET ${pathname} must serve the SPA`);
+    assert.match(
+      res.headers.get('x-robots-tag') || '',
+      /noindex/,
+      `GET ${pathname} must send an X-Robots-Tag noindex header`,
+    );
+    const body = await res.text();
+    assert.match(body, /<meta name="robots" content="noindex, nofollow, noarchive"/, `GET ${pathname} must inject noindex meta`);
+    assert.match(body, /rel="canonical" href="https:\/\/amnesia\.day\/"/, `GET ${pathname} canonical must point to /`);
+  }
+});
+
+test('public routes inject accurate indexable metadata', async () => {
+  const cases: Array<[string, string, string]> = [
+    ['/about', 'About Amnesia', 'index, follow'],
+    ['/privacy', 'Privacy | Amnesia', 'index, follow'],
+  ];
+  for (const [pathname, titlePart, robots] of cases) {
+    const res = await fetch(`${baseUrl}${pathname}`);
+    assert.equal(res.status, 200, `GET ${pathname} must serve the SPA`);
+    const body = await res.text();
+    assert.match(body, new RegExp(`<title>[^<]*${titlePart}[^<]*</title>`), `GET ${pathname} must inject its title`);
+    assert.match(body, new RegExp(`rel="canonical" href="https:\\/\\/amnesia\\.day${pathname}"`), `GET ${pathname} must inject its canonical`);
+    assert.match(body, new RegExp(`<meta name="robots" content="${robots}`), `GET ${pathname} must remain indexable`);
+  }
+});
+
+test('public trailing slashes redirect in one hop to the canonical URL', async () => {
+  for (const pathname of ['/about/', '/privacy/', '/faq/', '/terms/']) {
+    const res = await fetch(`${baseUrl}${pathname}`, { redirect: 'manual' });
+    assert.equal(res.status, 308, `GET ${pathname} must 308 redirect`);
+    assert.equal(
+      res.headers.get('location'),
+      `https://amnesia.day${pathname.slice(0, -1)}`,
+      `GET ${pathname} must redirect to the slash-less canonical URL`,
+    );
   }
 });

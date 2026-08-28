@@ -86,8 +86,8 @@ export default function App() {
     const path = window.location.pathname;
     const metadata: Record<string, { title: string; description: string }> = {
       '/': {
-        title: 'Amnesia | Private One-Year Memory Archive',
-        description: 'Amnesia is a private journaling and reflection space for memories, mindfulness, meditation notes, gratitude, and letters to your future self. Encrypt a memory in your browser and read it one year later.',
+        title: 'Amnesia | A Memory for Your Future Self',
+        description: 'Write a private memory, seal it for one year, and return when it awakens. Amnesia is a quiet, encrypted, time-locked diary with no personal profile.',
       },
       '/about': {
         title: 'About Amnesia | A One-Year Memory Archive',

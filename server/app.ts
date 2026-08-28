@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import path from 'path';
+import fs from 'node:fs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
@@ -87,6 +88,74 @@ function decodeAuthField(value: unknown, expectedBytes: number): Buffer | null {
   const decoded = decodeBase64UrlOrNull(value);
   if (!decoded || decoded.length !== expectedBytes) return null;
   return decoded;
+}
+
+// Server-side SPA metadata. The production server serves one static index.html
+// shell for every route, so per-route <head> metadata is injected here to be
+// available to crawlers without relying on client-side rendering. The values
+// mirror what the SPA applies in the browser (see src/App.tsx).
+//
+// Private/authenticated archive routes are never indexable: they carry no
+// crawlable content and are marked noindex both in the <meta> tag and via the
+// X-Robots-Tag header. SEO must never expose archive or recovery material.
+const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> = {
+  '/': {
+    title: 'Amnesia | A Memory for Your Future Self',
+    description: 'Write a private memory, seal it for one year, and return when it awakens. Amnesia is a quiet, encrypted, time-locked diary with no personal profile.',
+  },
+  '/about': {
+    title: 'About Amnesia | A One-Year Memory Archive',
+    description: 'Learn how Amnesia supports quiet journaling, reflection, mindfulness, meditation, and future-self letters with browser encryption, a server-enforced one-year release, and no personal data collection.',
+  },
+  '/faq': {
+    title: 'Archive Questions | Amnesia',
+    description: 'Answers about private journaling, memory encryption, mindfulness and meditation notes, Recovery Phrases, one-year awakening, and archive deletion.',
+  },
+  '/privacy': {
+    title: 'Privacy | Amnesia',
+    description: 'Amnesia collects no personal data and encrypts memories in your browser before they reach the archive.',
+  },
+  '/terms': {
+    title: 'Terms of Service | Amnesia',
+    description: 'Read the Amnesia Vault Protocol terms for browser-encrypted, one-year-release memories and Recovery Phrase access.',
+  },
+  '/machine': {
+    title: 'The Timekeeper | Amnesia',
+    description: 'Live status of the Raspberry Pi that quietly holds Amnesia memories and releases them at their one-year anniversary.',
+  },
+};
+
+const PRIVATE_SPA_ROUTES = new Set(['/vault', '/card', '/vault/calendar', '/vault/entries']);
+const PUBLIC_SPA_ROUTES = new Set(Object.keys(PUBLIC_PAGE_META));
+
+const NOINDEX_ROBOTS = 'noindex, nofollow, noarchive';
+const INDEXABLE_ROBOTS = 'index, follow, max-image-preview:large';
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function injectPageMetadata(html: string, pathname: string): string {
+  const isPrivate = PRIVATE_SPA_ROUTES.has(pathname);
+  const page = isPrivate ? undefined : PUBLIC_PAGE_META[pathname] || PUBLIC_PAGE_META['/'];
+  const canonicalPath = isPrivate ? '/' : pathname;
+  const canonical = `https://amnesia.day${canonicalPath}`;
+  const robots = isPrivate ? NOINDEX_ROBOTS : INDEXABLE_ROBOTS;
+  const title = isPrivate ? 'Amnesia' : page.title;
+  const description = isPrivate
+    ? 'Amnesia is a private, encrypted, time-locked diary. Write a memory and read it one year later.'
+    : page.description;
+
+  return html
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapeAttr(title)}</title>`)
+    .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${escapeAttr(description)}" />`)
+    .replace(/<meta name="robots" content="[^"]*" \/>/, `<meta name="robots" content="${robots}" />`)
+    .replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${canonical}" />`)
+    .replace(/<meta property="og:title" content="[^"]*" \/>/, `<meta property="og:title" content="${escapeAttr(title)}" />`)
+    .replace(/<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${escapeAttr(description)}" />`)
+    .replace(/<meta property="og:url" content="[^"]*" \/>/, `<meta property="og:url" content="${canonical}" />`)
+    .replace(/<meta name="twitter:title" content="[^"]*" \/>/, `<meta name="twitter:title" content="${escapeAttr(title)}" />`)
+    .replace(/<meta name="twitter:description" content="[^"]*" \/>/, `<meta name="twitter:description" content="${escapeAttr(description)}" />`);
 }
 
 export async function buildApp(): Promise<express.Express> {
@@ -453,6 +522,14 @@ export async function buildApp(): Promise<express.Express> {
     app.use(vite.middlewares);
   } else {
     const distPath = process.env.AMNESIA_DIST_PATH || path.join(process.cwd(), 'dist');
+    const indexPath = path.join(distPath, 'index.html');
+    let indexHtml: string | null = null;
+    const loadIndexHtml = (): string => {
+      if (indexHtml === null) {
+        indexHtml = fs.readFileSync(indexPath, 'utf8');
+      }
+      return indexHtml;
+    };
     // The server bundle, its source map, and other sensitive or reserved paths
     // must never be served. Direct requests return an explicit 404 rather than
     // falling through to the SPA fallback. These are exact reserved patterns,
@@ -475,9 +552,23 @@ export async function buildApp(): Promise<express.Express> {
         res.status(404).type('text/plain').send('Not found');
       }
     );
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const pathname = req.path || '/';
+      // Collapse public trailing slashes to canonical (slash-less) URLs with a
+      // single permanent redirect so /about and /about/ are not duplicates.
+      if (pathname !== '/' && pathname.endsWith('/')) {
+        const base = pathname.slice(0, -1);
+        if (PUBLIC_SPA_ROUTES.has(base)) {
+          return res.redirect(308, `https://amnesia.day${base}`);
+        }
+      }
+      // Private/authenticated archive routes must never be indexed; signal it
+      // via both the HTTP header (authoritative) and the injected <meta> tag.
+      if (PRIVATE_SPA_ROUTES.has(pathname)) {
+        res.setHeader('X-Robots-Tag', NOINDEX_ROBOTS);
+      }
+      res.send(injectPageMetadata(loadIndexHtml(), pathname));
     });
   }
 

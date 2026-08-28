@@ -84,14 +84,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Poetic Tagline */}
-        <div className="home-tagline space-y-3 mb-10">
-          <p className="text-xl sm:text-[24px] font-light italic text-[#E5E5E5] leading-relaxed">
+        <h1 className="home-tagline space-y-3 mb-10">
+          <span className="block text-xl sm:text-[24px] font-light italic text-[#E5E5E5] leading-relaxed">
             Forget today. Remember next year.
-          </p>
-          <p className="text-sm font-mono text-[#A0A0A0] tracking-widest uppercase">
+          </span>
+          <span className="block text-sm font-mono text-[#A0A0A0] tracking-widest uppercase">
             Leave something behind • Read it in one year
-          </p>
-        </div>
+          </span>
+        </h1>
 
         <p className="home-explainer max-w-md mb-8 text-sm sm:text-base font-serif italic text-[#9a9a9a] leading-relaxed">
           Write a memory. Seal it for one year. Only you can open it when it awakens.
