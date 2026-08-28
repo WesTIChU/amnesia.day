@@ -93,7 +93,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </p>
         </div>
 
-        <p className="home-explainer max-w-md mb-8 text-sm sm:text-base font-serif italic text-[#858585] leading-relaxed">
+        <p className="home-explainer max-w-md mb-8 text-sm sm:text-base font-serif italic text-[#9a9a9a] leading-relaxed">
           Write a memory. Seal it for one year. Only you can open it when it awakens.
         </p>
 
@@ -116,15 +116,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         {/* Free, Quick & No Personal Profile Notice */}
         <div className="home-details mb-12 text-[10px] sm:text-[11px] font-mono text-[#737373] tracking-widest uppercase flex flex-wrap justify-center items-center gap-2">
-          <span className="amnesia-detail">Takes ~5 seconds</span>
+          <span>Takes ~5 seconds</span>
           <span className="text-white/20">•</span>
-          <span className="amnesia-detail">No personal profile</span>
+          <span>No personal profile</span>
           <span className="text-white/20">•</span>
-          <span className="amnesia-detail">Free &amp; Encrypted</span>
+          <span>Free &amp; Encrypted</span>
         </div>
 
         {/* Tiny Homepage Public Numbers */}
-        <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-10 text-[11px] sm:text-[12px] font-mono text-[#666666] border-t border-b border-white/[0.04] py-4 w-full">
+        <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-10 text-[11px] sm:text-[12px] font-mono text-[#767676] border-t border-b border-white/[0.04] py-4 w-full">
           <div>
             <span className="text-[#e5e5e5] font-medium">{stats?.archivesOpened.toLocaleString() ?? '18,481'}</span> Archives
           </div>
@@ -138,7 +138,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
 
-        <p className="mt-5 max-w-xl text-base sm:text-lg font-serif italic text-[#8a8a8a] leading-relaxed">
+        <p className="mt-5 max-w-xl text-base sm:text-lg font-serif italic text-[#989898] leading-relaxed">
           Every memory sleeps on a Raspberry Pi, quietly waiting for the day it should be remembered.
         </p>
       </div>
@@ -196,7 +196,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </section>
 
       {/* Footer & Machine Telemetry */}
-      <footer className="relative z-10 flex flex-col items-center border-t border-white/5 pt-8 pb-4 gap-6 font-mono text-[10px] tracking-[0.1em] text-[#737373] uppercase">
+      <footer className="relative z-10 flex flex-col items-center border-t border-white/5 pt-8 pb-4 gap-6 font-mono text-[10px] tracking-[0.1em] text-[#828282] uppercase">
         {/* Navigation row: Terms, Privacy, About */}
         <div className="flex items-center justify-center gap-4 text-[#a3a3a3]">
           {onNavigateTerms && (
@@ -231,7 +231,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Bottom row: Machine status & Copyright */}
-        <div className="w-full flex flex-col sm:flex-row justify-center items-center gap-3 text-[10px] text-[#777777]">
+        <div className="w-full flex flex-col sm:flex-row justify-center items-center gap-3 text-[10px] text-[#868686]">
           <button
             onClick={onNavigateMachine}
             className="opacity-70 hover:opacity-100 hover:text-[#4A5D4E] transition-all cursor-pointer flex flex-wrap items-center gap-2"
@@ -254,7 +254,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         </div>
 
-        <div className="text-center text-[10px] text-[#777777] tracking-widest">
+        <div className="text-center text-[10px] text-[#868686] tracking-widest">
           © {new Date().getFullYear()} AMNESIA.DAY
         </div>
       </footer>

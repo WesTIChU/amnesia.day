@@ -81,22 +81,31 @@
 }
 
 @keyframes amnesia-forget {
-  0%, 68%, 100% {
+  0%, 100% {
+    opacity: 0.4;
+    filter: blur(0);
+  }
+  12% {
     opacity: 1;
     filter: blur(0);
   }
-  78%, 88% {
-    opacity: 0.18;
-    filter: blur(3px);
+  43% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  55% {
+    opacity: 0.4;
+    filter: blur(0);
   }
 }
 
-.amnesia-detail {
+/* The free/quick/details line is treated as one quiet thought: the whole
+   phrase fades in, holds, then fades away together rather than flashing
+   phrase by phrase. It rests faint, which is intentional. */
+.home-details > * {
   animation: amnesia-forget 14s ease-in-out infinite;
+  animation-delay: 2.2s;
 }
-
-.amnesia-detail:nth-of-type(3) { animation-delay: 2s; }
-.amnesia-detail:nth-of-type(5) { animation-delay: 4s; }
 
 .animate-machine-led {
   animation: machine-led 4s ease-in-out infinite;
@@ -123,11 +132,12 @@
     animation: none;
   }
 
-  .animate-machine-led {
+  .home-details > * {
+    opacity: 1;
     animation: none;
   }
 
-  .amnesia-detail {
+  .animate-machine-led {
     animation: none;
   }
 }
