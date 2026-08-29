@@ -100,20 +100,20 @@ function decodeAuthField(value: unknown, expectedBytes: number): Buffer | null {
 // X-Robots-Tag header. SEO must never expose archive or recovery material.
 const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> = {
   '/': {
-    title: 'Amnesia | A Memory for Your Future Self',
+    title: 'Amnesia | A Private Time Capsule for Your Future Self',
     description: 'Write a private memory, seal it for one year, and return when it awakens. Amnesia is a quiet, encrypted, time-locked diary with no personal profile.',
   },
   '/about': {
-    title: 'About Amnesia | A One-Year Memory Archive',
-    description: 'Learn how Amnesia supports quiet journaling, reflection, mindfulness, meditation, and future-self letters with browser encryption, a server-enforced one-year release, and no personal data collection.',
+    title: 'About Amnesia | How the Time Capsule Works',
+    description: 'How Amnesia works as a private digital time capsule and time-locked journal for letters to your future self: browser encryption, an enforced one-year release, and no personal data.',
   },
   '/faq': {
-    title: 'Archive Questions | Amnesia',
-    description: 'Answers about private journaling, memory encryption, mindfulness and meditation notes, Recovery Phrases, one-year awakening, and archive deletion.',
+    title: 'Amnesia FAQ | Letters to Your Future Self',
+    description: 'Answers about writing letters to your future self, a private encrypted diary without an account, one-year locking, Recovery Phrases, and archive deletion.',
   },
   '/privacy': {
-    title: 'Privacy | Amnesia',
-    description: 'Amnesia collects no personal data and encrypts memories in your browser before they reach the archive.',
+    title: 'Privacy Policy | Amnesia',
+    description: 'Amnesia is a private, encrypted diary with no account: no personal data is collected and memories are encrypted in your browser before they reach the archive.',
   },
   '/terms': {
     title: 'Terms of Service | Amnesia',

@@ -15,6 +15,10 @@ const questions = [
     answer: 'Write a journal entry, reflection, gratitude note, meditation note, or letter to your future self, review it, and seal it. It is encrypted in your browser and held in your archive until its one-year calendar anniversary.',
   },
   {
+    question: 'Can I write a letter to my future self?',
+    answer: 'Yes. That is exactly what Amnesia is for. Write a letter, seal it as a time capsule, and it stays locked until the same date one year later, when only you can open it again.',
+  },
+  {
     question: 'Can Amnesia read my memories?',
     answer: 'No. Memories are encrypted before they leave your browser. Your Recovery Phrase is required to decrypt them, and it is never stored by the server.',
   },
@@ -25,6 +29,14 @@ const questions = [
   {
     question: 'Is Amnesia really free?',
     answer: 'Yes. No subscription, no ads, and no paid tier. Amnesia is a small, self-hosted project built to do one thing: keep your memories sealed until it\'s time to remember them.',
+  },
+  {
+    question: 'Do I need an account to use Amnesia?',
+    answer: 'No. There is no email registration or password. Your archive is accessed with a single Recovery Phrase, so you can begin writing in about five seconds and never share a personal profile with Amnesia.',
+  },
+  {
+    question: 'Where are my memories stored?',
+    answer: 'On Amnesia\'s own small server, a single Raspberry Pi node. Your memories arrive there already encrypted in your browser, so the server holds encrypted ciphertext rather than readable text.',
   },
   {
     question: 'Why does Amnesia run on a Raspberry Pi?',

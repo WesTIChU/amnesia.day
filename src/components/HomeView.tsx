@@ -190,7 +190,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             Make room for what matters.
           </h2>
           <p className="text-base text-[#858585] leading-relaxed">
-            Use Amnesia as a private journal for thoughtful notes, gratitude, mindfulness, meditation reflections, personal goals, or a letter to your future self. There are no streaks, notifications, or public profiles to interrupt your balance. Write honestly, seal the memory, and return when a year has given it some distance.
+            Use Amnesia as a private journal and digital time capsule for thoughtful notes, gratitude, mindfulness, meditation reflections, personal goals, or a letter to your future self. There are no streaks, notifications, or public profiles to interrupt your balance. Write honestly, seal the memory, and return when a year has given it some distance.
           </p>
         </div>
       </section>

@@ -48,7 +48,7 @@ test('production serves the SPA at /', async () => {
   assert.equal(res.status, 200, 'GET / should return the SPA');
   const body = await res.text();
   assert.match(body, /Amnesia SPA/, 'GET / must return the SPA shell body');
-  assert.match(body, /<title>Amnesia \| A Memory for Your Future Self<\/title>/);
+  assert.match(body, /<title>Amnesia \| A Private Time Capsule for Your Future Self<\/title>/);
   assert.match(body, /rel="canonical" href="https:\/\/amnesia\.day\/"/);
 });
 
@@ -127,7 +127,7 @@ test('private routes are noindex at the server', async () => {
 test('public routes inject accurate indexable metadata', async () => {
   const cases: Array<[string, string, string]> = [
     ['/about', 'About Amnesia', 'index, follow'],
-    ['/privacy', 'Privacy | Amnesia', 'index, follow'],
+    ['/privacy', 'Privacy Policy | Amnesia', 'index, follow'],
   ];
   for (const [pathname, titlePart, robots] of cases) {
     const res = await fetch(`${baseUrl}${pathname}`);
